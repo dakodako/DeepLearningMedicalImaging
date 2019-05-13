@@ -31,25 +31,12 @@ from matplotlib import pyplot as plt
 import sys
 #%%
 def read_images(filepath):
-    '''
-    Parameters
-    ----------
-    filepath : string
-       specification of file to load
-    \*\*kwargs : keyword arguments
-        Keyword arguments to format-specific load
-
-    Returns
-    -------
-    imagesA : images on the left (usually the reference)
-    imagesB : images on the right (usually the input)
-    '''
     path = glob(filepath)
     print(path)
     images_A = []
     images_B = []
+    print(len(path))
     for i in range(len(path)):
-        print(path[i])
         image = nib.load(path[i])
         image = image.get_data()
         _,_,w = image.shape
