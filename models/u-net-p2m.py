@@ -45,6 +45,7 @@ def read_images(filepath):
     imagesB : images on the right (usually the input)
     '''
     path = glob(filepath)
+    print(path)
     images_A = []
     images_B = []
     for i in range(len(path)):
