@@ -295,7 +295,7 @@ curr_img = np.reshape(valid_ground[0], (256,256))
 plt.imshow(curr_img, cmap='gray')
 '''
 #%%
-'''
+
 batch_size = 1
 epochs = 200
 inChannel = 1
@@ -314,7 +314,7 @@ autoencoder_train = autoencoder.fit(train_X, train_ground, batch_size=batch_size
 #loss = autoencoder_train.history['loss']
 #val_loss = autoencoder_train.history['val_loss']
 autoencoder.save('u-net-p2m.h5')
-'''
+
 '''
 #%%
 filepath_test_X = sys.argv[3]#'../Documents/MRI_data/dataset/X/*'#sys.argv[3]
