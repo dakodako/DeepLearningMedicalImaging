@@ -239,7 +239,7 @@ def autoencoder2(input_img):
 
 #%%
 train_path = sys.argv[1]
-filepath_ground = sys.argv[2]
+#filepath_ground = sys.argv[2]
 #filepath_X = 'PETRA2/*'
 #filepath_ground = 'MP2RAGE2/*'
 #images_X = open_images(filepath_X)
