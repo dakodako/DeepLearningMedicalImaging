@@ -32,7 +32,6 @@ import sys
 #%%
 def read_images(filepath):
     path = glob(filepath)
-    print(path)
     images_A = []
     images_B = []
     print(len(path))
