@@ -290,6 +290,7 @@ input_img = Input(shape = (x,y,inChannel))
 autoencoder = Model(input_img, unet3(input_img))
 #rmsprop = optimizers.RMSprop(lr = 0.01)
 autoencoder.compile(loss='binary_crossentropy', optimizer = Adam())
+#autoencoder.compile(loss = ['binary_crossentropy','mae'], loss_weights = [1,100], optimizer = Adam())
 autoencoder.summary()
 #%%
 tensorboard = TensorBoard(log_dir="u-net-p2m_logs/{}".format(time()))
