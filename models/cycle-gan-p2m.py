@@ -175,6 +175,7 @@ class CycleGAN():
         self.shape = img_shape
         self.nchannels = self.shape[-1]
         self.use_patchgan = use_patchgan
+        self.use_supervised_learning = False
         self.learning_rate_D = lr_D
         self.learning_rate_G = lr_G 
         self.beta_1 = 0.5
@@ -184,6 +185,7 @@ class CycleGAN():
         self.lambda_1 = 10.0 # cyclic loss weight A_2_B
         self.lambda_2 = 10.0 # cyclic loss weight B_2_A
         self.lambda_D = 1.0
+        self.supervised_weight = 10.0
         # optimizer
         self.opt_D = Adam(self.learning_rate_D, self.beta_1, self.beta_2)
         self.opt_G = Adam(self.learning_rate_G, self.beta_1, self.beta_2)
@@ -225,6 +227,16 @@ class CycleGAN():
         compile_weights = [self.lambda_1, self.lambda_2, self.lambda_D, self.lambda_D]
         model_outputs.append(dA_guess_fake)
         model_outputs.append(dB_guess_fake)
+        if self.use_supervised_learning:
+            model_outputs.append(fake_A)
+            model_outputs.append(fake_B)
+            compile_loss.append('MAE')
+            compile_loss.append('MAE')
+            compile_weights.append(self.supervised_weight)
+            compile_weights.append(self.supervised_weight)
+        self.G_model = Model(inputs = [real_A, real_B], ouputs = model_outputs, name = 'G_model')
+        self.G_model.compile(optimizer = self.opt_G, loss = compile_loss, loss_weights=compile_weights)
+        
     def cycle_loss(self, y_true, y_pred):
         loss = tf.reduce_mean(tf.abs(y_pred-y_true))
         return loss
