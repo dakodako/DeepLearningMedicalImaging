@@ -13,11 +13,14 @@ from keras import initializers, regularizers, constraints
 from keras.layers import Layer, InputSpec
 from keras import backend as K
 from keras.optimizers import Adam
+#%%
 from skimage.io import imread
 from skimage.transform import rotate, resize
+#%%
 import numpy as np
 from glob import glob 
 import nibabel as nib 
+import datetime
 #%%
 class InstanceNormalization(Layer):
     """Instance normalization layer.
@@ -191,9 +194,9 @@ class DataLoader():
             return img, mask
     
         data_type = "train" if not is_testing else "test"
-        path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
+        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
         #path = glob('/Users/didichi/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        #path = glob('/Users/chid/.keras/datasets/facades/train/*')
+        path = glob('/Users/chid/.keras/datasets/p2m/train/*')
         batch_images = np.random.choice(path, size = batch_size)
         imgs_A = []
         imgs_B = []
@@ -243,8 +246,8 @@ class DataLoader():
             mask = mask[y:y+height, x:x+width]
             return img, mask
         data_type = "train" if not is_testing else "test"
-        #path = glob('/Users/didichi/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
+        path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
         self.n_batches = int(len(path) / batch_size)
         for i in range(self.n_batches-1):
             batch = path[i*batch_size:(i+1)*batch_size]
@@ -284,23 +287,31 @@ class DataLoader():
             imgs_B = np.asarray(imgs_B, dtype = float)
             imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1], imgs_B.shape[2],1))
             yield imgs_A, imgs_B
+#%%
 class CycleGAN():
-    def __init__(self, lr_D = 2e-4, lr_G =2e-4, img_shape = (256,256,1), use_patchgan = True):
+    def __init__(self, lr_D = 2e-4, lr_G =2e-4, img_shape = (256,256,1), dataset_name = 'p2m'):
         self.normalization = InstanceNormalization
         self.shape = img_shape
+        self.dataset_name = dataset_name
+        self.image_rows = img_shape[0]
         self.nchannels = self.shape[-1]
-        self.use_patchgan = use_patchgan
+        self.use_patchgan = True
         self.use_supervised_learning = False
+        self.use_linear_decay = False # need to be implemented
+        self.decay_epoch = 101
         self.learning_rate_D = lr_D
         self.learning_rate_G = lr_G 
         self.beta_1 = 0.5
         self.beta_2 = 0.999
         self.batch_size = 1
-        self.epochs = 200
+        self.epochs = 1
         self.lambda_1 = 10.0 # cyclic loss weight A_2_B
         self.lambda_2 = 10.0 # cyclic loss weight B_2_A
         self.lambda_D = 1.0
         self.supervised_weight = 10.0
+        patch = int(self.image_rows / 2**5)
+        self.disc_patch = (patch, patch, 1)
+        self.data_loader = DataLoader(dataset_name = self.dataset_name, img_res=self.shape)
         # optimizer
         self.opt_D = Adam(self.learning_rate_D, self.beta_1, self.beta_2)
         self.opt_G = Adam(self.learning_rate_G, self.beta_1, self.beta_2)
@@ -349,9 +360,10 @@ class CycleGAN():
             compile_loss.append('MAE')
             compile_weights.append(self.supervised_weight)
             compile_weights.append(self.supervised_weight)
+        print(real_A.shape)
         self.G_model = Model(inputs = [real_A, real_B], outputs = model_outputs, name = 'G_model')
         self.G_model.compile(optimizer = self.opt_G, loss = compile_loss, loss_weights=compile_weights)
-        
+        self.G_model.summary()
     def cycle_loss(self, y_true, y_pred):
         loss = tf.reduce_mean(tf.abs(y_pred-y_true))
         return loss
@@ -428,7 +440,26 @@ class CycleGAN():
         x = ReflectionPadding2D((3,3))(x)
         x = self.c7s1_k(x, self.nchannels) # use tanh for activation instead NEEDS to be CHANGED LATER!!!!
         return Model(inputs = input_img, outputs = x, name = name)
-    def build_discriminator(self, name = None):
+    def build_discriminator(self, name=None):
+        # Specify input
+        input_img = Input(shape=self.shape)
+        # Layer 1 (#Instance normalization is not used for this layer)
+        x = self.ck(input_img, 64, False)
+        # Layer 2
+        x = self.ck(x, 128, True)
+        # Layer 3
+        x = self.ck(x, 256, True)
+        # Layer 4
+        x = self.ck(x, 512, True)
+        # Output layer
+        if self.use_patchgan:
+            x = Conv2D(filters=1, kernel_size=4, strides=1, padding='same')(x)
+        else:
+            x = Flatten()(x)
+            x = Dense(1)(x)
+        x = Activation('sigmoid')(x)
+        return Model(inputs=input_img, outputs=x, name=name)
+    def build_discriminator2(self, name = None):
         """
         C64-C128-C256-C512
         """
@@ -445,10 +476,92 @@ class CycleGAN():
             x = Dense(1)(x)
         x = Activation('sigmoid')(x)
         return Model(inputs = input_img, outputs = x, name = name)
-    #def train(self, epochs, batch_size = 1, sample_interval = 50):
+    #def get_lr_linear_decay_rate(self):
+        #updates_per_epoch_D = 2
+    def update_lr(self, model, decay):
+        new_lr = K.get_value(model.optimizer.lr) -decay
+        if new_lr < 0:
+            new_lr = 0
+        K.set_value(model.optimizer.lr, new_lr)
+    def train(self, epochs, batch_size = 1, sample_interval = 50):
+        start_time = datetime.datetime.now()
+        DA_losses = []
+        DB_losses = []
+        gA_d_losses_fake = []
+        gB_d_losses_fake = []
+        gA_losses_reconstructed = []
+        gB_losses_reconstructed = []
+        GA_losses = []
+        GB_losses = []
+        reconstruction_losses = []
+        D_losses = []
+        G_losses = []
+        #valid = np.ones((batch_size, ) + self.disc_patch)
+        #fake = np.zeros((batch_size, ) + self.disc_patch)
+        label_shape = (batch_size, ) + self.D_A.output_shape[1:]
+        valid = np.ones(shape = label_shape)* 1.0
+        fake = valid * 0 
+        for epoch in range(1,epochs+1):
+            for batch_i, (imgs_A, imgs_B) in enumerate(self.data_loader.load_batch(batch_size)):
+                # ====== discriminators training ====== #
+                print(imgs_A.shape)
+                fake_B = self.G_A2B.predict(imgs_A)
+                fake_A = self.G_B2A.predict(imgs_B)
+                print(imgs_A.shape)
+                print(valid.shape)
+                dA_loss_real = self.D_A.train_on_batch(imgs_A, valid)
+                dA_loss_fake = self.D_A.train_on_batch(fake_A, fake)
+                dA_loss = 0.5 * np.add(dA_loss_fake, dA_loss_real)
 
+                dB_loss_real = self.D_B.train_on_batch(imgs_B, valid)
+                dB_loss_fake = self.D_B.train_on_batch(fake_B, fake)
+                dB_loss = 0.5*np.add(dA_loss_fake, dB_loss_real)
+
+                d_loss = 0.5*np.add(dA_loss, dB_loss)
+
+                # ====== generator training ====== #
+
+                target_data = [imgs_A, imgs_B]
+                target_data.append(valid)
+                target_data.append(valid)
+
+                if self.use_supervised_learning:
+                    target_data.append(imgs_A)
+                    target_data.append(imgs_B)
+                G_loss = self.G_model.train_on_batch(x = [imgs_A, imgs_B], y = target_data)
+                
+                gA_d_loss_fake = G_loss[1]
+                gB_d_loss_fake = G_loss[2]
+                reconstruction_loss_A = G_loss[3]
+                reconstruction_loss_B = G_loss[4]
+                # Update learning rates
+                #if self.use_linear_decay and epoch > self.decay_epoch:
+                    #self.update_lr(self.D_A, )
+                DA_losses.append(dA_loss)
+                DB_losses.append(dB_loss)
+                gA_d_losses_fake.append(gA_d_loss_fake)
+                gB_d_losses_fake.append(gB_d_loss_fake)
+                gA_losses_reconstructed.append(reconstruction_loss_A)
+                gB_losses_reconstructed.append(reconstruction_loss_B)
+                GA_loss = gA_d_loss_fake + reconstruction_loss_A
+                GB_loss = gB_d_loss_fake + reconstruction_loss_B
+                D_losses.append(d_loss)
+                GA_losses.append(GA_loss)
+                GB_losses.append(GB_loss)
+                G_losses.append(G_loss)
+                reconstruction_loss = reconstruction_loss_A + reconstruction_loss_B
+                reconstruction_losses.append(reconstruction_loss)
+
+                print('\n')
+                print('Epoch---------------', epoch, '/', epochs)
+                print('Loop index----------------', loop_index + 1, '/', epoch_iterations)
+                print('D_loss: ', d_loss)
+                print('G_loss: ', G_loss[0])
+                print('reconstruction_loss: ', reconstruction_loss)
+                print('DA_loss:', DA_loss)
+                print('DB_loss:', DB_loss)
 #%%
-test_model = CycleGAN((256,256, 1), use_patchgan= True)
+test_model = CycleGAN((256,256, 1))
 #%%
 test_generator = test_model.build_generator()
 #%%
@@ -460,7 +573,23 @@ test_discriminator.summary()
 #%%
 test_model.G_model.summary()
 #%%
-test_input = Input(shape = (256,256,1))
-test_x = ReflectionPadding2D((4,4))(test_input)
-test_model = Model(inputs = test_input, outputs = test_x)
-test_model.summary()
+A, B = test_model.data_loader.load_data(1)
+#%%
+print(A.shape)
+print(np.mean(A))
+#%%
+test_model.train(1)
+#%%
+ones = np.ones(shape = (1,16,16,1))
+print(ones.shape)
+#%%
+test_model.D_A.train_on_batch(A, ones)
+#%%
+print(test_model.D_A.output_shape)
+#%%
+test_model.D_A.summary()
+#%%
+test_discriminator = test_model.build_discriminator()
+test_discriminator.summary()
+#%%
+test_model.D_B.train_on_batch(x = B, y = ones* 0)
