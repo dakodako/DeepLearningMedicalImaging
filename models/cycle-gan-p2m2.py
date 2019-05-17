@@ -1,4 +1,6 @@
-from keras.layers import Layer, Input, InputSec, Conv2D, Activation, add, BatchNormalization, UpSampling2D, ZeroPadding2D, Conv2DTranspose, Flatten, MaxPooling2D, AveragePooling2D
+#%%
+from keras.layers import Layer, InputSpec
+from keras.layers import Input,Conv2D, Activation, add, BatchNormalization, UpSampling2D, ZeroPadding2D, Conv2DTranspose, Flatten, MaxPooling2D, AveragePooling2D
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization, InputSpec
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.core import Dense
@@ -7,7 +9,7 @@ from keras.backend import mean
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from keras.engine.topology import Network
-
+#%%
 from collections import OrderedDict
 from scipy.misc import imsave, toimage  # has depricated
 import numpy as np
@@ -19,17 +21,248 @@ import math
 import csv
 import sys
 import os
-
+#%%
+from PIL import Image
+from keras.utils import Sequence
+from skimage.transform import resize, rotate
+from glob import glob 
+import nibabel as nib
+#%%
 import keras.backend as K
 import tensorflow as tf
+#%%
 
-import load_data
 
 np.random.seed(seed=12345)
+class ReflectionPadding2D(Layer):
+    def __init__(self, padding=(1, 1), **kwargs):
+        self.padding = tuple(padding)
+        self.input_spec = [InputSpec(ndim=4)]
+        super(ReflectionPadding2D, self).__init__(**kwargs)
+
+    def compute_output_shape(self, s):
+        return (s[0], s[1] + 2 * self.padding[0], s[2] + 2 * self.padding[1], s[3])
+
+    def call(self, x, mask=None):
+        w_pad, h_pad = self.padding
+        return tf.pad(x, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]], 'REFLECT')
+'''
+def load_data(nr_of_channels, batch_size=1, nr_A_train_imgs=None, nr_B_train_imgs=None,
+              nr_A_test_imgs=None, nr_B_test_imgs=None, subfolder='',
+              generator=False, D_model=None, use_multiscale_discriminator=False, use_supervised_learning=False, REAL_LABEL=1.0):
+
+    trainA_path = os.path.join('data', subfolder, 'trainA')
+    trainB_path = os.path.join('data', subfolder, 'trainB')
+    testA_path = os.path.join('data', subfolder, 'testA')
+    testB_path = os.path.join('data', subfolder, 'testB')
+
+    trainA_image_names = os.listdir(trainA_path)
+    if nr_A_train_imgs != None:
+        trainA_image_names = trainA_image_names[:nr_A_train_imgs]
+
+    trainB_image_names = os.listdir(trainB_path)
+    if nr_B_train_imgs != None:
+        trainB_image_names = trainB_image_names[:nr_B_train_imgs]
+
+    testA_image_names = os.listdir(testA_path)
+    if nr_A_test_imgs != None:
+        testA_image_names = testA_image_names[:nr_A_test_imgs]
+
+    testB_image_names = os.listdir(testB_path)
+    if nr_B_test_imgs != None:
+        testB_image_names = testB_image_names[:nr_B_test_imgs]
+
+    if generator:
+        return data_sequence(trainA_path, trainB_path, trainA_image_names, trainB_image_names, batch_size=batch_size)  # D_model, use_multiscale_discriminator, use_supervised_learning, REAL_LABEL)
+    else:
+        trainA_images = create_image_array(trainA_image_names, trainA_path, nr_of_channels)
+        trainB_images = create_image_array(trainB_image_names, trainB_path, nr_of_channels)
+        testA_images = create_image_array(testA_image_names, testA_path, nr_of_channels)
+        testB_images = create_image_array(testB_image_names, testB_path, nr_of_channels)
+        return {"trainA_images": trainA_images, "trainB_images": trainB_images,
+                "testA_images": testA_images, "testB_images": testB_images,
+                "trainA_image_names": trainA_image_names,
+                "trainB_image_names": trainB_image_names,
+                "testA_image_names": testA_image_names,
+                "testB_image_names": testB_image_names}
 
 
+def create_image_array(image_list, image_path, nr_of_channels):
+    image_array = []
+    for image_name in image_list:
+        if image_name[-1].lower() == 'g':  # to avoid e.g. thumbs.db files
+            if nr_of_channels == 1:  # Gray scale image -> MR image
+                image = np.array(Image.open(os.path.join(image_path, image_name)))
+                image = image[:, :, np.newaxis]
+            else:                   # RGB image -> 3 channels
+                image = np.array(Image.open(os.path.join(image_path, image_name)))
+            image = normalize_array(image)
+            image_array.append(image)
+
+    return np.array(image_array)
+  
+  
+  # If using 16 bit depth images, use the formula 'array = array / 32767.5 - 1' instead
+def normalize_array(array):
+    array = array / 127.5 - 1
+    return array
+
+
+class data_sequence(Sequence):
+
+    def __init__(self, trainA_path, trainB_path, image_list_A, image_list_B, batch_size=1):  # , D_model, use_multiscale_discriminator, use_supervised_learning, REAL_LABEL):
+        self.batch_size = batch_size
+        self.train_A = []
+        self.train_B = []
+        for image_name in image_list_A:
+            if image_name[-1].lower() == 'g':  # to avoid e.g. thumbs.db files
+                self.train_A.append(os.path.join(trainA_path, image_name))
+        for image_name in image_list_B:
+            if image_name[-1].lower() == 'g':  # to avoid e.g. thumbs.db files
+                self.train_B.append(os.path.join(trainB_path, image_name))
+
+    def __len__(self):
+        return int(max(len(self.train_A), len(self.train_B)) / float(self.batch_size))
+
+    def __getitem__(self, idx):  # , use_multiscale_discriminator, use_supervised_learning):if loop_index + batch_size >= min_nr_imgs:
+        if idx >= min(len(self.train_A), len(self.train_B)):
+            # If all images soon are used for one domain,
+            # randomly pick from this domain
+            if len(self.train_A) <= len(self.train_B):
+                indexes_A = np.random.randint(len(self.train_A), size=self.batch_size)
+                batch_A = []
+                for i in indexes_A:
+                    batch_A.append(self.train_A[i])
+                batch_B = self.train_B[idx * self.batch_size:(idx + 1) * self.batch_size]
+            else:
+                indexes_B = np.random.randint(len(self.train_B), size=self.batch_size)
+                batch_B = []
+                for i in indexes_B:
+                    batch_B.append(self.train_B[i])
+                batch_A = self.train_A[idx * self.batch_size:(idx + 1) * self.batch_size]
+        else:
+            batch_A = self.train_A[idx * self.batch_size:(idx + 1) * self.batch_size]
+            batch_B = self.train_B[idx * self.batch_size:(idx + 1) * self.batch_size]
+
+        real_images_A = create_image_array(batch_A, '', 3)
+        real_images_B = create_image_array(batch_B, '', 3)
+
+        return real_images_A, real_images_B  # input_data, target_data
+'''
+class DataLoader():
+    def __init__(self, dataset_name, img_res = (128,128)):
+        self.img_res = img_res
+        self.dataset_name = dataset_name
+
+    def load_data(self, batch_size = 1, is_testing = False, is_jitter = False):
+        def randomCrop(img , mask, width, height):
+            assert img.shape[0] >= height
+            assert img.shape[1] >= width
+            assert img.shape[0] == mask.shape[0]
+            assert img.shape[1] == mask.shape[1]
+            x = np.random.randint(0, img.shape[1] - width)
+            y = np.random.randint(0, img.shape[0] - height)
+            img = img[y:y+height, x:x+width]
+            mask = mask[y:y+height, x:x+width]
+            return img, mask
+    
+        data_type = "train" if not is_testing else "test"
+        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
+        path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        #path = glob('/Users/chid/.keras/datasets/p2m/train/*')
+        batch_images = np.random.choice(path, size = batch_size)
+        imgs_A = []
+        imgs_B = []
+        for img_path in batch_images:
+            img = nib.load(img_path)
+            img = img.get_data()
+            _,_,w = img.shape
+            _w = int(w/2)
+            img_A, img_B = img[:,:,:_w], img[:,:,_w:]
+            #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
+            img_A = np.squeeze(img_A)
+            img_B = np.squeeze(img_B)
+            img_A = resize(img_A, (self.img_res[0],self.img_res[1]))
+            img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
+            if not is_testing and np.random.random() <0.5 and is_jitter:
+                # 1. Resize an image to bigger height and width
+                img_A = resize(img_A, (img_A.shape[0] + 64, img_A.shape[1] + 64))
+                img_B = resize(img_B, (img_B.shape[0] + 64, img_B.shape[1] + 64))
+                # 2. Randomly crop the image
+                img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
+                # 3. Randomly flip the image horizontally
+                img_A = np.fliplr(img_A)
+                img_B = np.fliplr(img_B)
+            m_A = np.max(img_A)
+            mi_A = np.min(img_A)
+            img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+            m_B = np.max(img_B)
+            mi_B = np.min(img_B)
+            img_B = 2* (img_B - mi_B)/(m_B - mi_B) -1 
+            imgs_A.append(img_A)
+            imgs_B.append(img_B)
+        imgs_A = np.asarray(imgs_A, dtype=float)
+        imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
+        imgs_B = np.asarray(imgs_B, dtype = float)
+        imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1],imgs_B.shape[2],1))
+        return imgs_A, imgs_B
+    
+    def load_batch(self, batch_size = 1, is_testing = False, is_jitter = False):
+        def randomCrop(img , mask, width, height):
+            assert img.shape[0] >= height
+            assert img.shape[1] >= width
+            assert img.shape[0] == mask.shape[0]
+            assert img.shape[1] == mask.shape[1]
+            x = np.random.randint(0, img.shape[1] - width)
+            y = np.random.randint(0, img.shape[0] - height)
+            img = img[y:y+height, x:x+width]
+            mask = mask[y:y+height, x:x+width]
+            return img, mask
+        data_type = "train" if not is_testing else "test"
+        path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
+        self.n_batches = int(len(path) / batch_size)
+        for i in range(self.n_batches-1):
+            batch = path[i*batch_size:(i+1)*batch_size]
+            imgs_A, imgs_B = [], []
+            for img in batch:
+                img = nib.load(img)
+                img = img.get_data()
+                _,_,w = img.shape
+                _w = int(w/2)
+                img_A, img_B = img[:,:,:_w], img[:,:,_w:]
+                #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
+                img_A = np.squeeze(img_A)
+                img_B = np.squeeze(img_B)
+                img_A = resize(img_A, (self.img_res[0],self.img_res[1]))
+                img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
+                #print(img_A.shape)
+                #print(img_B.shape)
+                if not is_testing and np.random.random() <0.5 and is_jitter:
+                    # 1. Resize an image to bigger height and width
+                    img_A = resize(img_A, (img_A.shape[0] + 64, img_A.shape[1] + 64))
+                    img_B = resize(img_B, (img_B.shape[0] + 64, img_B.shape[1] + 64))
+                    # 2. Randomly crop the image
+                    img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
+                    # 3. Randomly flip the image horizontally
+                    img_A = np.fliplr(img_A)
+                    img_B = np.fliplr(img_B)
+                m_A = np.max(img_A)
+                mi_A = np.min(img_A)
+                img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+                m_B = np.max(img_B)
+                mi_B = np.min(img_B)
+                img_B = 2* (img_B - mi_B)/(m_B - mi_B) - 1
+                imgs_A.append(img_A)
+                imgs_B.append(img_B)
+            imgs_A = np.asarray(imgs_A, dtype=float)
+            imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
+            imgs_B = np.asarray(imgs_B, dtype = float)
+            imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1], imgs_B.shape[2],1))
+            yield imgs_A, imgs_B
+#%%
 class CycleGAN():
-    def __init__(self, lr_D=2e-4, lr_G=2e-4, image_shape=(304, 256, 1),
+    def __init__(self, lr_D=2e-4, lr_G=2e-4, image_shape = (256, 256, 1),
                  date_time_string_addition='', image_folder='MR'):
         self.img_shape = image_shape
         self.channels = self.img_shape[-1]
@@ -45,12 +278,12 @@ class CycleGAN():
         self.beta_1 = 0.5
         self.beta_2 = 0.999
         self.batch_size = 1
-        self.epochs = 200  # choose multiples of 25 since the models are save each 25th epoch
+        self.epochs = 100 # choose multiples of 25 since the models are save each 25th epoch
         self.save_interval = 1
         self.synthetic_pool_size = 50
-
+        self.data_loader = DataLoader(dataset_name = 'p2m', img_res = (256,256))
         # Linear decay of learning rate, for both discriminators and generators
-        self.use_linear_decay = True
+        self.use_linear_decay = False
         self.decay_epoch = 101  # The epoch where the linear decay of the learning rates start
 
         # Identity loss - sometimes send images from B to G_A2B (and the opposite) to teach identity mappings
@@ -175,6 +408,7 @@ class CycleGAN():
 
         # ======= Data ==========
         # Use 'None' to fetch all available images
+        '''
         nr_A_train_imgs = None
         nr_B_train_imgs = None
         nr_A_test_imgs = None
@@ -187,14 +421,14 @@ class CycleGAN():
         sys.stdout.flush()
 
         if self.use_data_generator:
-            self.data_generator = load_data.load_data(
+            self.data_generator = load_data(
                 nr_of_channels=self.batch_size, generator=True, subfolder=image_folder)
 
             # Only store test images
             nr_A_train_imgs = 0
             nr_B_train_imgs = 0
 
-        data = load_data.load_data(nr_of_channels=self.channels,
+        data = load_data(nr_of_channels=self.channels,
                                    batch_size=self.batch_size,
                                    nr_A_train_imgs=nr_A_train_imgs,
                                    nr_B_train_imgs=nr_B_train_imgs,
@@ -210,13 +444,14 @@ class CycleGAN():
         self.testB_image_names = data["testB_image_names"]
         if not self.use_data_generator:
             print('Data has been loaded')
-
+        '''
         # ======= Create designated run folder and store meta data ==========
+        '''
         directory = os.path.join('images', self.date_time)
         if not os.path.exists(directory):
             os.makedirs(directory)
         self.writeMetaDataToJSON()
-
+        '''
         # ======= Avoid pre-allocating GPU memory ==========
         # uncommenting the following lines when using GPU
         # TensorFlow wizardry
@@ -230,17 +465,20 @@ class CycleGAN():
 
         # ===== Tests ======
         # Simple Model
-#         self.G_A2B = self.modelSimple('simple_T1_2_T2_model')
-#         self.G_B2A = self.modelSimple('simple_T2_2_T1_model')
-#         self.G_A2B.compile(optimizer=Adam(), loss='MAE')
-#         self.G_B2A.compile(optimizer=Adam(), loss='MAE')
-#         # self.trainSimpleModel()
-#         self.load_model_and_generate_synthetic_images()
-
+        '''
+        self.G_A2B = self.modelSimple('simple_T1_2_T2_model')
+        self.G_B2A = self.modelSimple('simple_T2_2_T1_model')
+        self.G_A2B.compile(optimizer=Adam(), loss='MAE')
+        self.G_B2A.compile(optimizer=Adam(), loss='MAE')
+        self.trainSimpleModel()
+        self.load_model_and_generate_synthetic_images()
+        '''
         # ======= Initialize training ==========
-        sys.stdout.flush()
+        #sys.stdout.flush()
         #plot_model(self.G_A2B, to_file='GA2B_expanded_model_new.png', show_shapes=True)
+        '''
         self.train(epochs=self.epochs, batch_size=self.batch_size, save_interval=self.save_interval)
+        '''
         #self.load_model_and_generate_synthetic_images()
 
 #===============================================================================
@@ -359,6 +597,7 @@ class CycleGAN():
 
 #===============================================================================
 # Test - simple model
+    '''
     def modelSimple(self, name=None):
         inputImg = Input(shape=self.img_shape)
         #x = Conv2D(1, kernel_size=5, strides=1, padding='same')(inputImg)
@@ -387,11 +626,11 @@ class CycleGAN():
 
         self.saveModel(self.G_A2B, 200)
         self.saveModel(self.G_B2A, 200)
-
-#===============================================================================
-# Training
+    '''
+    #===============================================================================
+    # Training
     def train(self, epochs, batch_size=1, save_interval=1):
-        def run_training_iteration(loop_index, epoch_iterations):
+        def run_training_iteration( epoch_iterations):
             # ======= Discriminator training ==========
                 # Generate batch of synthetic images
             synthetic_images_B = self.G_A2B.predict(real_images_A)
@@ -445,6 +684,7 @@ class CycleGAN():
             reconstruction_loss_B = G_loss[4]
 
             # Identity training
+            '''
             if self.use_identity_learning and loop_index % self.identity_mapping_modulus == 0:
                 G_A2B_identity_loss = self.G_A2B.train_on_batch(
                     x=real_images_B, y=real_images_B)
@@ -452,13 +692,14 @@ class CycleGAN():
                     x=real_images_A, y=real_images_A)
                 print('G_A2B_identity_loss:', G_A2B_identity_loss)
                 print('G_B2A_identity_loss:', G_B2A_identity_loss)
-
+            '''
             # Update learning rates
+            '''
             if self.use_linear_decay and epoch > self.decay_epoch:
                 self.update_lr(self.D_A, decay_D)
                 self.update_lr(self.D_B, decay_D)
                 self.update_lr(self.G_model, decay_G)
-
+            '''
             # Store training data
             DA_losses.append(DA_loss)
             DB_losses.append(DB_loss)
@@ -478,17 +719,17 @@ class CycleGAN():
 
             print('\n')
             print('Epoch----------------', epoch, '/', epochs)
-            print('Loop index----------------', loop_index + 1, '/', epoch_iterations)
+            #print('Loop index----------------', loop_index + 1, '/', epoch_iterations)
             print('D_loss: ', D_loss)
             print('G_loss: ', G_loss[0])
             print('reconstruction_loss: ', reconstruction_loss)
             print('dA_loss:', DA_loss)
             print('DB_loss:', DB_loss)
 
-            if loop_index % 20 == 0:
+            #if loop_index % 20 == 0:
                 # Save temporary images continously
-                self.save_tmp_images(real_images_A, real_images_B, synthetic_images_A, synthetic_images_B)
-                self.print_ETA(start_time, epoch, epoch_iterations, loop_index)
+                #self.save_tmp_images(real_images_A, real_images_B, synthetic_images_A, synthetic_images_B)
+                #self.print_ETA(start_time, epoch, epoch_iterations, loop_index)
 
         # ======================================================================
         # Begin training
@@ -533,13 +774,21 @@ class CycleGAN():
             zeros = ones * 0
 
         # Linear decay
+        '''
         if self.use_linear_decay:
             decay_D, decay_G = self.get_lr_linear_decay_rate()
-
+        '''
         # Start stopwatch for ETAs
         start_time = time.time()
 
         for epoch in range(1, epochs + 1):
+            for batch_i, (real_images_A, real_images_B) in enumerate(self.data_loader.load_batch(batch_size)):
+                run_training_iteration(  epoch_iterations = 1)
+            if epoch % save_interval == 0:
+                print('\n', '\n', '-------------------------Saving images for epoch', epoch, '-------------------------', '\n', '\n')
+                self.saveImages(epoch, real_images_A, real_images_B)
+                
+            '''
             if self.use_data_generator:
                 loop_index = 1
                 for images in self.data_generator:
@@ -584,16 +833,16 @@ class CycleGAN():
                         if len(A_train) <= len(B_train):
                             indexes_A = np.random.randint(len(A_train), size=batch_size)
                             indexes_B = random_order_B[loop_index:
-                                                       loop_index + batch_size]
+                                                        loop_index + batch_size]
                         else:
                             indexes_B = np.random.randint(len(B_train), size=batch_size)
                             indexes_A = random_order_A[loop_index:
-                                                       loop_index + batch_size]
+                                                        loop_index + batch_size]
                     else:
                         indexes_A = random_order_A[loop_index:
-                                                   loop_index + batch_size]
+                                                    loop_index + batch_size]
                         indexes_B = random_order_B[loop_index:
-                                                   loop_index + batch_size]
+                                                    loop_index + batch_size]
 
                     sys.stdout.flush()
                     real_images_A = A_train[indexes_A]
@@ -601,9 +850,9 @@ class CycleGAN():
 
                     # Run all training steps
                     run_training_iteration(loop_index, epoch_iterations)
-
+            '''
             #================== within epoch loop end ==========================
-
+            '''
             if epoch % save_interval == 0:
                 print('\n', '\n', '-------------------------Saving images for epoch', epoch, '-------------------------', '\n', '\n')
                 self.saveImages(epoch, real_images_A, real_images_B)
@@ -614,7 +863,7 @@ class CycleGAN():
                 self.saveModel(self.D_B, epoch)
                 self.saveModel(self.G_A2B, epoch)
                 self.saveModel(self.G_B2A, epoch)
-
+            
             training_history = {
                 'DA_losses': DA_losses,
                 'DB_losses': DB_losses,
@@ -629,9 +878,9 @@ class CycleGAN():
 
             # Flush out prints each loop iteration
             sys.stdout.flush()
-
-#===============================================================================
-# Help functions
+            '''
+    #===============================================================================
+    # Help functions
 
     def lse(self, y_true, y_pred):
         loss = tf.reduce_mean(tf.squared_difference(y_pred, y_true))
@@ -640,7 +889,7 @@ class CycleGAN():
     def cycle_loss(self, y_true, y_pred):
         loss = tf.reduce_mean(tf.abs(y_pred - y_true))
         return loss
-
+    
     def truncateAndSave(self, real_, real, synthetic, reconstructed, path_name):
         if len(real.shape) > 3:
             real = real[0]
@@ -662,7 +911,7 @@ class CycleGAN():
             image = image[:, :, 0]
 
         toimage(image, cmin=0, cmax=1).save(path_name)
-
+    
     def saveImages(self, epoch, real_image_A, real_image_B, num_saved_images=1):
         directory = os.path.join('images', self.date_time)
         if not os.path.exists(os.path.join(directory, 'A')):
@@ -677,16 +926,17 @@ class CycleGAN():
         real_image_Ba = None
         for i in range(num_saved_images + 1):
             if i == num_saved_images:
-                real_image_A = self.A_test[0]
-                real_image_B = self.B_test[0]
-                real_image_A = np.expand_dims(real_image_A, axis=0)
-                real_image_B = np.expand_dims(real_image_B, axis=0)
+                A_test, B_test = self.data_loader.load_data(batch_size= 1, is_testing=True)
+                real_image_A = A_test
+                real_image_B = B_test
+                #real_image_A = np.expand_dims(real_image_A, axis=0)
+                #real_image_B = np.expand_dims(real_image_B, axis=0)
                 testString = 'test'
                 if self.channels == 1:  # Use the paired data for MR images
-                    real_image_Ab = self.B_test[0]
-                    real_image_Ba = self.A_test[0]
-                    real_image_Ab = np.expand_dims(real_image_Ab, axis=0)
-                    real_image_Ba = np.expand_dims(real_image_Ba, axis=0)
+                    real_image_Ab = B_test
+                    real_image_Ba = A_test
+                    #real_image_Ab = np.expand_dims(real_image_Ab, axis=0)
+                    #real_image_Ba = np.expand_dims(real_image_Ba, axis=0)
             else:
                 #real_image_A = self.A_train[rand_A_idx[i]]
                 #real_image_B = self.B_train[rand_B_idx[i]]
@@ -710,7 +960,7 @@ class CycleGAN():
             self.truncateAndSave(real_image_Ba, real_image_B, synthetic_image_A, reconstructed_image_B,
                                  'images/{}/{}/epoch{}_sample{}.png'.format(
                                      self.date_time, 'B' + testString, epoch, i))
-
+    '''
     def save_tmp_images(self, real_image_A, real_image_B, synthetic_image_A, synthetic_image_B):
         try:
             reconstructed_image_A = self.G_B2A.predict(synthetic_image_B)
@@ -781,14 +1031,14 @@ class CycleGAN():
         with open(model_path_m, 'w') as outfile:
             json.dump(json_string, outfile)
         print('{} has been saved in saved_models/{}/'.format(model.name, self.date_time))
-
+'''
     def writeLossDataToFile(self, history):
         keys = sorted(history.keys())
         with open('images/{}/loss_output.csv'.format(self.date_time), 'w') as csv_file:
             writer = csv.writer(csv_file, delimiter=',')
             writer.writerow(keys)
             writer.writerows(zip(*[history[key] for key in keys]))
-
+'''
     def writeMetaDataToJSON(self):
 
         directory = os.path.join('images', self.date_time)
@@ -867,20 +1117,8 @@ class CycleGAN():
 
 # reflection padding taken from
 # https://github.com/fastai/courses/blob/master/deeplearning2/neural-style.ipynb
-class ReflectionPadding2D(Layer):
-    def __init__(self, padding=(1, 1), **kwargs):
-        self.padding = tuple(padding)
-        self.input_spec = [InputSpec(ndim=4)]
-        super(ReflectionPadding2D, self).__init__(**kwargs)
 
-    def compute_output_shape(self, s):
-        return (s[0], s[1] + 2 * self.padding[0], s[2] + 2 * self.padding[1], s[3])
-
-    def call(self, x, mask=None):
-        w_pad, h_pad = self.padding
-        return tf.pad(x, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]], 'REFLECT')
-
-
+'''
 class ImagePool():
     def __init__(self, pool_size):
         self.pool_size = pool_size
@@ -927,6 +1165,28 @@ class ImagePool():
 
         return return_images
 
-
+#%%
 if __name__ == '__main__':
     GAN = CycleGAN()
+    GAN.train(epochs = 1, batch_size=1, save_interval=1)
+
+#%%
+#GAN = CycleGAN()
+#%%
+#a, b = GAN.data_loader.load_data(batch_size=1, is_testing = True)
+#GAN.G_model.summary()
+#%%
+#print(a.shape)
+#%%
+#A, B = test_model.data_loader.load_data(1)
+#%%
+#A, B = GAN.data_loader.load_data(1)
+#print(A.shape)
+#print(np.mean(A))
+#%%
+#ones = np.ones(shape = (1,16,16,1))
+#print(ones.shape)
+#%%
+#GAN.D_A.train_on_batch(x = A, y = ones)
+#%%
+#GAN.D_A.summary()
