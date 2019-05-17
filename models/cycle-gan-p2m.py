@@ -12,6 +12,7 @@ from keras.engine.topology import Network
 from keras import initializers, regularizers, constraints
 from keras.layers import Layer, InputSpec
 from keras import backend as K
+from keras.optimizers import Adam
 #%%
 class InstanceNormalization(Layer):
     """Instance normalization layer.
