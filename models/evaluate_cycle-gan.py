@@ -665,7 +665,7 @@ class CycleGAN():
         # ======================================================================
         # Begin training
         # ======================================================================
-        training_history = OrderedDict()
+        #training_history = OrderedDict()
 
         DA_losses = []
         DB_losses = []
