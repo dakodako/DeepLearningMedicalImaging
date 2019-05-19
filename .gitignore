@@ -1,2 +1,5 @@
 
 .vscode/settings.json
+datasets/p2m4/test/1861.nii.gz
+datasets/p2m4/test/1862.nii.gz
+*.gz

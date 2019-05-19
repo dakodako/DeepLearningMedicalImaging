@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 #%%
 batch_size = 1
-path = glob('/Users/chid/Documents/DeepLearning/datasets/p2m/val/*')
+path = glob('datasets/p2m4/val/*')
 print(path)
 #%%
 batch_images = np.random.choice(path, size = batch_size)
@@ -29,12 +29,12 @@ X = (X - mi)/(m - mi)
 mi = np.min(target)
 m = np.max(target)
 target = (target - mi)/(m - mi)
-plt.imshow(np.squeeze(X), cmap= 'gray')
+#plt.imshow(np.squeeze(X), cmap= 'gray')
 X = np.expand_dims(X, 3)
 print(X.shape)
 
 #%%
-model = load_model('/Users/chid/Documents/DeepLearning/models/u-net-p2m_l2.h5')
+model = load_model('models/u-net-p2m_l2_2.h5')
 model.summary()
 
 #%%
@@ -42,6 +42,7 @@ model.summary()
 pred = model.predict(X)
 #%%
 print(pred.shape)
+#%%
 plt.imshow(np.squeeze(pred), cmap = 'gray')
 #%%
 plt.imshow(np.squeeze(target), cmap = 'gray')

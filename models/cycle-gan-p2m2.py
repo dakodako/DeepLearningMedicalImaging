@@ -28,7 +28,7 @@ from keras.utils import Sequence
 #from skimage.transform import resize, rotate
 from glob import glob 
 import nibabel as nib
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 #%%
 import keras.backend as K
 import tensorflow as tf
@@ -761,7 +761,7 @@ class CycleGAN():
 
         #toimage(image, cmin=0, cmax=1).save(path_name)
         Image.fromarray(image).save(path_name)
-    
+    '''
     def saveImages(self, epoch, real_image_A, real_image_B, num_saved_images=1):
         directory = os.path.join('images', self.date_time)
         if not os.path.exists(os.path.join(directory, 'A')):
@@ -858,7 +858,7 @@ class CycleGAN():
             plt.close()
             #self.truncateAndSave(real_image_Ab, real_image_A, synthetic_image_B, reconstructed_image_A,'images/{}/{}/epoch{}_sample{}.png'.format(self.date_time, 'A' + testString, epoch, i))
             #self.truncateAndSave(real_image_Ba, real_image_B, synthetic_image_A, reconstructed_image_B,'images/{}/{}/epoch{}_sample{}.png'.format(self.date_time, 'B' + testString, epoch, i))
-  
+        '''
 #===============================================================================
 # Save and load
 
