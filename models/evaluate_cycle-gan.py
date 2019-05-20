@@ -51,7 +51,7 @@ class DataLoader():
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('datasets/p2m4/val/*')
+        path = glob('datasets/p2m5/val/*')
         batch_images = np.random.choice(path, size = batch_size)
         imgs_A = []
         imgs_B = []
@@ -924,17 +924,24 @@ class ImagePool():
 
 
 #%%
-data_loader = DataLoader(dataset_name = 'p2m4', img_res=(256,256))
+data_loader = DataLoader(dataset_name = 'p2m5', img_res=(256,256))
 #%%
 a, b = data_loader.load_data(batch_size=1, is_testing= True)
 print(a.shape)
-
+#%%
+c, d = data_loader.load_data(1, is_testing = True)
+print(c.shape)
 #%%
 GAN = CycleGAN()
 G_A2B = GAN.G_A2B
 G_B2A = GAN.G_B2A
 D_A = GAN.D_A
 D_B = GAN.D_B
+#%%
+unet_model = load_model('models/u-net-p2m_l2.h5')
+unet_pred = unet_model.predict(a)
+#%%
+plt.imshow(np.squeeze(unet_pred), cmap = 'gray')
 #%%
 G_A2B.summary()
 #%%
@@ -943,49 +950,11 @@ G_A2B.summary()
 #%%
 #model = model_from_json(model_json)
 #%%
-G_A2B.load_weights('models/saved_models/20190519-012230/G_A2B_model_weights_epoch_100.hdf5')
-G_B2A.load_weights('models/saved_models/20190519-012230/G_B2A_model_weights_epoch_100.hdf5')
-D_A.load_weights('models/saved_models/20190519-012230/D_A_model_weights_epoch_100.hdf5')
-D_B.load_weights('models/saved_models/20190519-012230/D_B_model_weights_epoch_100.hdf5')
+G_A2B.load_weights('models/saved_models/20190519-215259/G_A2B_model_weights_epoch_200.hdf5')
+G_B2A.load_weights('models/saved_models/20190519-215259/G_B2A_model_weights_epoch_200.hdf5')
+D_A.load_weights('models/saved_models/20190519-215259/D_A_model_weights_epoch_200.hdf5')
+D_B.load_weights('models/saved_models/20190519-215259/D_B_model_weights_epoch_200.hdf5')
+unet_G = load_model('models/u-net-p2m_l2_2.h5')
+
+
 #G_A2B_model = load_model('/Users/didichi/Documents/DeepLearningMedicalImaging/models/saved_models/20190519-012230/G_A2B_model_weights_epoch_100.hdf5')
-#%%
-
-fake_B = G_A2B.predict(a)
-print(fake_B.shape)
-fake_A = G_B2A.predict(fake_B)
-#%%
-score_fake_B = D_B.predict(fake_B)
-score_fake_A = D_A.predict(fake_A)
-#%%
-#plt.imshow(np.squeeze(a), cmap = 'gray')
-#%%
-#plt.imshow(np.squeeze(fake_B), cmap = 'gray')
-np.save('reference_b', b)
-np.save('temp_input_a', a)
-np.save('temp_output_b', fake_B)
-np.save('temp_output_a', fake_A)
-np.save('temp_score_fake_a', score_fake_A)
-np.save('temp_score_fake_b', score_fake_B)
-#%%
-import numpy as np
-
-#%%
-a = np.load('temp_input_a.npy')
-fake_B = np.load('temp_output_b.npy')
-b = np.load('reference_b.npy')
-#%%
-plt.imshow(np.squeeze(a))
-#%%
-plt.imshow(np.squeeze(fake_B))
-#%%
-plt.imshow(np.squeeze(b))
-#%%
-fake_A = np.load('temp_output_a.npy')
-#%%
-plt.imshow(np.squeeze(fake_A))
-#%%
-score_fake_A = np.load('temp_score_fake_a.npy')
-#%%
-print(np.mean(score_fake_A))
-#%%
-print(np.mean(score_fake_B))
