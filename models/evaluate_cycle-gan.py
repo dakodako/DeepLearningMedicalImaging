@@ -51,7 +51,7 @@ class DataLoader():
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('datasets/p2m5/val/*')
+        path = glob('datasets/p2m4/val/*')
         batch_images = np.random.choice(path, size = batch_size)
         imgs_A = []
         imgs_B = []
@@ -85,10 +85,10 @@ class DataLoader():
                 img_B = np.fliplr(img_B)
             m_A = np.max(img_A)
             mi_A = np.min(img_A)
-            img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+            img_A = (img_A - mi_A)/(m_A - mi_A)
             m_B = np.max(img_B)
             mi_B = np.min(img_B)
-            img_B = 2* (img_B - mi_B)/(m_B - mi_B) -1 
+            img_B = (img_B - mi_B)/(m_B - mi_B)
             imgs_A.append(img_A)
             imgs_B.append(img_B)
         imgs_A = np.asarray(imgs_A, dtype=float)
@@ -926,11 +926,15 @@ class ImagePool():
 #%%
 data_loader = DataLoader(dataset_name = 'p2m5', img_res=(256,256))
 #%%
-a, b = data_loader.load_data(batch_size=1, is_testing= True)
+b, a = data_loader.load_data(batch_size=1, is_testing= True)
 print(a.shape)
+
 #%%
-c, d = data_loader.load_data(1, is_testing = True)
-print(c.shape)
+print(np.min(a))
+print(np.max(a))
+#%%
+a = 2.0*a - 1
+b = 2.0*b - 1
 #%%
 GAN = CycleGAN()
 G_A2B = GAN.G_A2B
@@ -938,8 +942,12 @@ G_B2A = GAN.G_B2A
 D_A = GAN.D_A
 D_B = GAN.D_B
 #%%
-unet_model = load_model('models/u-net-p2m_l2.h5')
-unet_pred = unet_model.predict(a)
+unet_model = load_model('models/u-net-p2m_l2_2.h5')
+#%%
+unet_pred = unet_model.predict(b)
+print(np.min(b))
+print(np.max(b))
+loss_unet = np.abs(unet_pred - a)
 #%%
 plt.imshow(np.squeeze(unet_pred), cmap = 'gray')
 #%%
@@ -950,11 +958,72 @@ G_A2B.summary()
 #%%
 #model = model_from_json(model_json)
 #%%
-G_A2B.load_weights('models/saved_models/20190519-215259/G_A2B_model_weights_epoch_200.hdf5')
-G_B2A.load_weights('models/saved_models/20190519-215259/G_B2A_model_weights_epoch_200.hdf5')
-D_A.load_weights('models/saved_models/20190519-215259/D_A_model_weights_epoch_200.hdf5')
-D_B.load_weights('models/saved_models/20190519-215259/D_B_model_weights_epoch_200.hdf5')
-unet_G = load_model('models/u-net-p2m_l2_2.h5')
+G_A2B.load_weights('models/saved_models/20190520-110332/G_A2B_model_weights_epoch_100.hdf5')
+G_B2A.load_weights('models/saved_models/20190520-110332/G_B2A_model_weights_epoch_100.hdf5')
+D_A.load_weights('models/saved_models/20190520-110332/D_A_model_weights_epoch_100.hdf5')
+D_B.load_weights('models/saved_models/20190520-110332/D_B_model_weights_epoch_100.hdf5')
 
+#%%
+plt.imshow(np.squeeze(b), cmap = 'gray')
+#%%
+fake_A = G_B2A.predict(b)
+fake_B = G_A2B.predict(fake_A)
+loss_B2A = np.abs(fake_A - a)
+#%%
+plt.figure(figsize=(20,5))
+plt.subplot(1,4,1)
+plt.imshow(np.squeeze(a), cmap = 'gray')
+plt.subplot(1,4,3)
+plt.imshow(np.squeeze(b), cmap = 'gray')
+plt.subplot(1,4,2)
+plt.imshow(np.squeeze(fake_A), cmap = 'gray')
+plt.subplot(1,4,4)
+plt.imshow(np.squeeze(loss_B2A))
+plt.savefig('cycle-gan-result.png')
+#%%
+plt.figure(figsize=(20,5))
+plt.subplot(1,4,1)
+plt.imshow(np.squeeze(a), cmap = 'gray')
+plt.subplot(1,4,3)
+plt.imshow(np.squeeze(b), cmap = 'gray')
+plt.subplot(1,4,2)
+plt.imshow(np.squeeze(unet_pred), cmap = 'gray')
+plt.subplot(1,4,4)
+plt.imshow(np.squeeze(loss_unet))
+plt.savefig('unet-result.png')
+#%%
+#plt.figure(figsize=(10,15))
+plt.subplot(211)
+plt.imshow(np.squeeze(loss_unet), cmap=plt.cm.BuPu_r)
+plt.subplot(212)
+plt.imshow(np.squeeze(loss_B2A), cmap=plt.cm.BuPu_r)
 
+plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
+cax = plt.axes([1, 0.1, 0.075, 0.8])
+plt.colorbar(cax=cax)
+plt.savefig('errormap.png')
+#%%
+print(np.min(fake_A))
+print(np.max(fake_A))
+print(np.min(a))
+print(np.max(a))
+#%%
+plt.imshow(np.squeeze(loss_B2A))
+#%%
+plt.imshow(np.squeeze(fake_A), cmap = 'gray')
+#%%
+plt.imshow(np.squeeze(fake_B), cmap = 'gray')
+#%%
+plt.imshow(np.squeeze(b), cmap = 'gray')
+#%%
+plt.imshow(np.squeeze(fake_A), cmap = 'gray')
+#%%
+plt.imshow(np.squeeze(a), cmap = 'gray')
+#%%
+score_fake_A = D_A.predict(fake_A)
+score_fake_B = D_B.predict(fake_B)
+#%%
+mse_loss_unet = np.mean(np.square(unet_pred - b_unet))
+#%%
+mse_loss_cycle = np.mean(np.square(fake_B - b))
 #G_A2B_model = load_model('/Users/didichi/Documents/DeepLearningMedicalImaging/models/saved_models/20190519-012230/G_A2B_model_weights_epoch_100.hdf5')
