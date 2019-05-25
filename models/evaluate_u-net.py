@@ -21,8 +21,8 @@ a = nib.load(batch_images[0])
 a = a.get_fdata()
 print(a.shape)
 #%%
-target = a[0,:,0:255]
-X = a[:,:,255:511]
+X = a[0,:,0:256]
+target = a[:,:,255:511]
 mi = np.min(X)
 m = np.max(X)
 X = (X - mi)/(m - mi)
@@ -31,6 +31,7 @@ m = np.max(target)
 target = (target - mi)/(m - mi)
 #plt.imshow(np.squeeze(X), cmap= 'gray')
 X = np.expand_dims(X, 3)
+X = np.expand_dims(X,0)
 print(X.shape)
 
 #%%
