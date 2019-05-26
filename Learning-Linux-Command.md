@@ -9,3 +9,7 @@ ls -sh
 #### print the information of the system on spartan
 
 motd
+
+#### move all files in subfolders to its parent folder
+
+find . -mindepth 2 -type f -print -exec mv {} . \;
