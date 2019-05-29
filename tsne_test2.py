@@ -338,6 +338,12 @@ class DataLoader():
             img_A, img_B = img[:,:,:_w], img[:,:,_w:]
             img_A = np.squeeze(img_A)
             img_B = np.squeeze(img_B)
+            m_A = np.max(img_A)
+            mi_A = np.min(img_A)
+            img_A = (img_A - mi_A)/(m_A - mi_A) 
+            m_B = np.max(img_B)
+            mi_B = np.min(img_B)
+            img_B = (img_B - mi_B)/(m_B - mi_B)
             imgs_A.append(img_A)
             imgs_A_label.append(1)
             imgs_B.append(img_B)
@@ -415,39 +421,51 @@ print(a.shape)
 #%%
 plt.imshow(np.squeeze(a[0,:,:]))
 #%%
+plt.imshow(np.squeeze(b[0,:,:]))
+#%%
 # === load models and evaluate === *
 GAN = CycleGAN()
 #%%
-G_A2B = GAN.G_A2B
-G_B2A = GAN.G_B2A
-D_A = GAN.D_A
-D_B = GAN.D_B
-G_A2B.load_weights('models/saved_models/20190520-110332/G_A2B_model_weights_epoch_100.hdf5')
-G_B2A.load_weights('models/saved_models/20190520-110332/G_B2A_model_weights_epoch_100.hdf5')
-D_A.load_weights('models/saved_models/20190520-110332/D_A_model_weights_epoch_100.hdf5')
-D_B.load_weights('models/saved_models/20190520-110332/D_B_model_weights_epoch_100.hdf5')
+G_A2B = GAN.G_B2A
+G_B2A = GAN.G_A2B
+D_A = GAN.D_B
+D_B = GAN.D_A
+G_A2B.load_weights('models/saved_models/20190524-131743/G_A2B_model_weights_epoch_200.hdf5')
+G_B2A.load_weights('models/saved_models/20190524-131743/G_B2A_model_weights_epoch_200.hdf5')
+D_A.load_weights('models/saved_models/20190524-131743/D_A_model_weights_epoch_200.hdf5')
+D_B.load_weights('models/saved_models/20190524-131743/D_B_model_weights_epoch_200.hdf5')
 #%%
 unet_model = load_model('models/u-net-p2m_l2_2.h5')
 #%%
 plt.imshow(np.squeeze(b[0,:,:]))
 #%%
+s = np.expand_dims(b[0,:,:], 0)
+s = np.expand_dims(s, 3)
+s = 2*s - 1
+fake_A = G_B2A.predict(s)
+#%%
+plt.imshow(np.squeeze(fake_A))
+#%%
 fake_As = []
 fake_As_label = []
+
 for n in range(b.shape[0]):
     # a is the mp2rage image b is the petra image
     s = np.expand_dims(b[n,:,:], 0)
     s = np.expand_dims(s, 3)
+    s = 2*s - 1
     fake_A = G_B2A.predict(s)
     fake_A = np.squeeze(fake_A)
     fake_As.append(fake_A)
     fake_As_label.append(2) #2 means fake_A
+#%%
+plt.imshow(np.squeeze(s))
 #%%
 unet_As = []
 unet_As_label = []
 for n in range(b.shape[0]):
     s = np.expand_dims(b[n,:,:], 0)
     s = np.expand_dims(s, 3)
-    s = 2*s - 1
     unet_A = unet_model.predict(s)
     unet_As.append(unet_A)
     unet_As_label.append(3) # 3 means unet_A
@@ -466,7 +484,7 @@ print(fake_As_label.shape)
 unet_As = np.reshape(unet_As, (unet_As.shape[0], unet_As.shape[1]* unet_As.shape[2]))
 #%%
 fake_As = np.reshape(fake_As, (fake_As.shape[0], fake_As.shape[1]* fake_As.shape[2]))
-
+#%%
 a = np.reshape(a, (a.shape[0], a.shape[1] * a.shape[2]))
 #%%
 X = np.concatenate((a,fake_As, unet_As))
@@ -515,7 +533,7 @@ df['pca-two'] = pca_result[:,1]
 df['pca-three'] = pca_result[:,2]
 
 print('Explained variation per principal component: {}'.format(pca.explained_variance_ratio_))
-#%%
+#%% 
 tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
 tsne_results = tsne.fit_transform(df[feat_cols].values)
 #%%
@@ -575,3 +593,20 @@ df_subset['pca-two'] = pca_result[:,1]
 df_subset['pca-three'] = pca_result[:,2]
 print('Explained variation per principal component: {}'.format(pca.explained_variance_ratio_))
 
+#%%
+print(np.mean(unet_As))
+#%%
+print(np.mean(2*a - 1))
+#%%
+loss_unet = np.mean(np.square(unet_As - (a  )))
+print(loss_unet)
+loss_gan = np.mean(np.square(fake_As - (2*a - 1)))
+print(loss_gan)
+#%%
+print(a.shape)
+a_imgs = np.reshape(a, (a.shape[0], 256,256))
+plt.imshow(a_imgs[10,:,:], cmap = 'gray')
+#%%
+fake_As_img = np.reshape(fake_As, (fake_As.shape[0], 256, 256))
+#%%
+plt.imshow(fake_As_img[10,:,:])
