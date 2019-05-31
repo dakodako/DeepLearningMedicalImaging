@@ -4,6 +4,7 @@ import nibabel as nib
 from PIL import Image
 import numpy as np 
 import os
+import random
 from random import sample
 #from matplotlib import pyplot as plt
 #%%
@@ -16,10 +17,19 @@ class Dataloader():
                 self.img_path.append(ds[n])
         self.batch_size = 1
         self.n_batches = int(len(self.img_path)/self.batch_size)
-        self.img_size = 128
+        self.img_size = 64
     def read_image(self, path):
+        img = Image.open(path).convert('LA')
+        img = img.resize((self.img_size, self.img_size))
+        a = random.uniform(0,1)
+        if a < 0.5:
+            img = img.rotate(180)
+        img = np.array(img)
+        img_gray = np.squeeze(img[:,:,0])
+        """
         img = np.array(Image.open(path).convert('LA'))
         img_gray = np.squeeze(img[:,:,0])
+
         (w,h) = img_gray.shape 
         if w < self.img_size or h < self.img_size:
             img = Image.open(path).convert('LA')
@@ -31,7 +41,8 @@ class Dataloader():
             m_h = int(h/2)
             img = np.zeros(shape = (self.img_size,self.img_size))
             img = img_gray[(m_w - int(self.img_size/2)):(m_w + int(self.img_size/2)), (m_h - int(self.img_size/2)):( m_h + int(self.img_size/2))]
-        return img
+        """
+        return img_gray
     def read_images(self, dir):
         path = glob(dir)
         imgs = []
@@ -134,4 +145,4 @@ class Dataloader():
 #for batch_i, (imgs, imgs_f) in enumerate(dl.load_batch()):
     #print(imgs.shape)
     #print(imgs_f.shape)
-    
+#img = Image.open('imagenet/ILSVRC2011_val_00000009.JPEG')

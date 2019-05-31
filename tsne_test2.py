@@ -17,7 +17,7 @@ from PIL import Image
 #%%
 from keras.models import load_model
 from keras.layers import Layer, InputSpec
-from keras.layers import Input,Conv2D, Activation, add, BatchNormalization, UpSampling2D, ZeroPadding2D, Conv2DTranspose, Flatten, MaxPooling2D, AveragePooling2D
+from keras.layers import Input,Conv2D, Activation, add, BatchNormalization, UpSampling2D, ZeroPadding2D, Conv2DTranspose, Flatten, MaxPooling2D, AveragePooling2D, LeakyReLU, Lambda, GaussianNoise, merge, concatenate, Dropout, InputSpec, Layer
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization, InputSpec
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.core import Dense
@@ -29,6 +29,238 @@ from keras.engine.topology import Network
 from keras import initializers, regularizers, constraints
 import tensorflow as tf
 #%%
+from time import localtime, strftime 
+from keras.activations import tanh 
+from keras.regularizers import l2 
+from keras.initializers import RandomNormal 
+from keras import backend as K
+#%%
+class unit():
+    def __init__(self, lr = 1e-4, img_res = (256,256)):
+        self.channels = 1
+        self.img_shape = (img_res[0], img_res[1], self.channels)
+        self.latent_dim = (int(self.img_shape[0] / 4), int(self.img_shape[1] / 4), 256)
+        weight_decay = 0.0001/2 
+        self.learning_rate = lr 
+        self.beta_1 = 0.5 
+        self.beta_2 = 0.999 
+        self.lambda_0 = 10 
+        self.lambda_1 = 0.1 
+        self.lambda_2 = 100
+        self.lambda_3 = self.lambda_1 
+        self.lambda_4 = self.lambda_2 
+        self.dataloader = DataLoader(dataset_name = 'p2m4', img_res = (256,256))
+        opt = Adam(self.learning_rate, self.beta_1, self.beta_2)
+        self.date_time = strftime("%Y%m%d-%H%M%S", localtime()) 
+        # Discriminator
+        self.discriminatorA = self.modelMultiDiscriminator("discriminatorA")
+        self.discriminatorB = self.modelMultiDiscriminator("discriminatorB")
+
+        for layer in self.discriminatorA.layers:
+            if hasattr(layer, 'kernel_regularizer'):
+                layer.kernel_regularizer= l2(weight_decay)
+                layer.bias_regularizer = l2(weight_decay)
+            if hasattr(layer, 'kernel_initializer'):
+                layer.kernel_initializer = RandomNormal(mean=0.0, stddev=0.02)
+                layer.bias_initializer = RandomNormal(mean=0.0, stddev=0.02)
+
+        for layer in self.discriminatorB.layers:
+            if hasattr(layer, 'kernel_regularizer'):
+                layer.kernel_regularizer= l2(weight_decay)
+                layer.bias_regularizer = l2(weight_decay)
+            if hasattr(layer, 'kernel_initializer'):
+                layer.kernel_initializer = RandomNormal(mean=0.0, stddev=0.02)
+                layer.bias_initializer = RandomNormal(mean=0.0, stddev=0.02)
+        self.discriminatorA.compile(optimizer=opt,
+                                    loss=['binary_crossentropy',
+                                          'binary_crossentropy',
+                                          'binary_crossentropy'],
+                                    loss_weights=[self.lambda_0,
+                                                  self.lambda_0,
+                                                  self.lambda_0])
+        self.discriminatorB.compile(optimizer=opt,
+                                    loss=['binary_crossentropy',
+                                          'binary_crossentropy',
+                                          'binary_crossentropy'],
+                                    loss_weights=[self.lambda_0,
+                                                  self.lambda_0,
+                                                  self.lambda_0])
+        self.encoderA = self.modelEncoder("encoderA")
+        self.encoderB = self.modelEncoder("encoderB")
+        self.encoderShared = self.modelSharedEncoder("encoderShared")
+        self.decoderShared = self.modelSharedDecoder("decoderShared")
+        self.generatorA = self.modelGenerator("generatorA")
+        self.generatorB = self.modelGenerator("generatorB")
+        imgA = Input(shape=(self.img_shape))
+        imgB = Input(shape=(self.img_shape))
+        encodedImageA = self.encoderA(imgA)
+        encodedImageB = self.encoderB(imgB)
+
+        sharedA = self.encoderShared(encodedImageA)
+        sharedB = self.encoderShared(encodedImageB)
+
+        outSharedA = self.decoderShared(sharedA)
+        outSharedB = self.decoderShared(sharedB)
+        # Input Generator
+        outAa = self.generatorA(outSharedA)
+        outBa = self.generatorA(outSharedB)
+
+        outAb = self.generatorB(outSharedA)
+        outBb = self.generatorB(outSharedB)
+
+        guess_outBa = self.discriminatorA(outBa)
+        guess_outAb = self.discriminatorB(outAb)
+
+        # Cycle
+        cycle_encodedImageA = self.encoderA(outBa)
+        cycle_encodedImageB = self.encoderB(outAb)
+
+        cycle_sharedA = self.encoderShared(cycle_encodedImageA)
+        cycle_sharedB = self.encoderShared(cycle_encodedImageB)
+
+        cycle_outSharedA = self.decoderShared(cycle_sharedA)
+        cycle_outSharedB = self.decoderShared(cycle_sharedB)
+
+        cycle_Ab_Ba = self.generatorA(cycle_outSharedB)
+        cycle_Ba_Ab = self.generatorB(cycle_outSharedA)
+
+        # Train only generators
+        self.discriminatorA.trainable = False
+        self.discriminatorB.trainable = False
+
+        self.encoderGeneratorModel = Model(inputs=[imgA, imgB],
+                              outputs=[sharedA, sharedB,
+                                       cycle_sharedA, cycle_sharedB,
+                                       outAa, outBb,
+                                       cycle_Ab_Ba, cycle_Ba_Ab,
+                                       guess_outBa[0], guess_outAb[0],
+                                       guess_outBa[1], guess_outAb[1],
+                                       guess_outBa[2], guess_outAb[2]])
+
+        for layer in self.encoderGeneratorModel.layers:
+            if hasattr(layer, 'kernel_regularizer'):
+                layer.kernel_regularizer= l2(weight_decay)
+                layer.bias_regularizer = l2(weight_decay)
+            if hasattr(layer, 'kernel_initializer'):
+                layer.kernel_initializer = RandomNormal(mean=0.0, stddev=0.02)
+                layer.bias_initializer = RandomNormal(mean=0.0, stddev=0.02)
+
+        self.encoderGeneratorModel.compile(optimizer=opt,
+                              loss=[self.vae_loss_CoGAN, self.vae_loss_CoGAN,
+                                    self.vae_loss_CoGAN, self.vae_loss_CoGAN,
+                                    'mae', 'mae',
+                                    'mae', 'mae',
+                                    'binary_crossentropy', 'binary_crossentropy',
+                                    'binary_crossentropy', 'binary_crossentropy',
+                                    'binary_crossentropy', 'binary_crossentropy'],
+                              loss_weights=[self.lambda_1, self.lambda_1,
+                                            self.lambda_3, self.lambda_3,
+                                            self.lambda_2, self.lambda_2,
+                                            self.lambda_4, self.lambda_4,
+                                            self.lambda_0, self.lambda_0,
+                                            self.lambda_0, self.lambda_0,
+                                            self.lambda_0, self.lambda_0])
+    def resblk(self, x0, k):
+        # first layer
+        x = Conv2D(filters=k, kernel_size=3, strides=1, padding="same")(x0)
+        x = BatchNormalization(axis=3, momentum=0.9, epsilon=1e-05, center=True)(x, training=True)
+        x = Activation('relu')(x)
+        # second layer
+        x = Conv2D(filters=k, kernel_size=3, strides=1, padding="same")(x)
+        x = BatchNormalization(axis=3, momentum=0.9, epsilon=1e-05, center=True)(x, training=True)
+        x = Dropout(0.5)(x, training=True)
+        # merge
+        x = add([x, x0])
+
+        return x
+    def vae_loss_CoGAN(self, y_true, y_pred):
+        y_pred_2 = K.square(y_pred)
+        encoding_loss = K.mean(y_pred_2)
+        return encoding_loss
+    def modelMultiDiscriminator(self, name):
+        x1 = Input(shape=self.img_shape)
+        x2 = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)(x1)
+        x4 = AveragePooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None)(x2)
+
+        x1_out = self.modelDiscriminator(x1)
+        x2_out = self.modelDiscriminator(x2)
+        x4_out = self.modelDiscriminator(x4)
+
+        return Model(inputs=x1, outputs=[x1_out, x2_out, x4_out], name=name)
+
+    def modelDiscriminator(self, x):
+        # Layer 1
+        x = Conv2D(64, kernel_size=3, strides=2, padding='same')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 2
+        x = Conv2D(128, kernel_size=3, strides=2, padding='same')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 3
+        x = Conv2D(256, kernel_size=3, strides=2, padding='same')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 4
+        x = Conv2D(512, kernel_size=3, strides=2, padding='same')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 5
+        x = Conv2D(1, kernel_size=1, strides=1)(x)
+        prediction = Activation('sigmoid')(x)
+
+        return prediction
+    def modelEncoder(self, name):
+        inputImg = Input(shape=self.img_shape)
+        # Layer 1
+        x = ZeroPadding2D(padding=(3, 3))(inputImg)
+        x = Conv2D(64, kernel_size=7, strides=1, padding='valid')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 2
+        x = ZeroPadding2D(padding=(1, 1))(x)
+        x = Conv2D(128, kernel_size=3, strides=2, padding='valid')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 3
+        x = ZeroPadding2D(padding=(1, 1))(x)
+        x = Conv2D(256, kernel_size=3, strides=2, padding='valid')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 4: 2 res block
+        x = self.resblk(x, 256)
+        # Layer 5: 3 res block
+        x = self.resblk(x, 256)
+        # Layer 6: 3 res block
+        z = self.resblk(x, 256)
+
+        return Model(inputs=inputImg, outputs=z, name=name)
+    def modelSharedEncoder(self, name):
+        input = Input(shape=self.latent_dim)
+
+        x = self.resblk(input, 256)
+        z = GaussianNoise(stddev=1)(x, training=True)
+
+        return Model(inputs=input, outputs=z, name=name)
+    def modelSharedDecoder(self, name):
+        input = Input(shape=self.latent_dim)
+
+        x = self.resblk(input, 256)
+
+        return Model(inputs=input, outputs=x, name=name)
+    def modelGenerator(self, name):
+        inputImg = Input(shape=self.latent_dim)
+        # Layer 1: 1 res block
+        x = self.resblk(inputImg, 256)
+        # Layer 2: 2 res block
+        x = self.resblk(x, 256)
+        # Layer 3: 3 res block
+        x = self.resblk(x, 256)
+        # Layer 4:
+        x = Conv2DTranspose(128, kernel_size=3, strides=2, padding='same')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 5:
+        x = Conv2DTranspose(64, kernel_size=3, strides=2, padding='same')(x)
+        x = LeakyReLU(alpha=0.01)(x)
+        # Layer 6
+        x = Conv2DTranspose(self.channels, kernel_size=1, strides=1, padding='valid')(x)
+        z = Activation("tanh")(x)
+
+        return Model(inputs=inputImg, outputs=z, name=name)
+#%%  
 class CycleGAN():
     def __init__(self, lr_D=2e-4, lr_G=2e-4, image_shape = (256, 256, 1),
                  date_time_string_addition='', image_folder='MR'):
@@ -426,6 +658,40 @@ plt.imshow(np.squeeze(b[0,:,:]))
 # === load models and evaluate === *
 GAN = CycleGAN()
 #%%
+UNIT_gan = unit()
+
+#%%
+encoderA = UNIT_gan.encoderA
+encoderB = UNIT_gan.encoderB
+encoderShared = UNIT_gan.encoderShared
+decoderShared = UNIT_gan.decoderShared
+generatorA = UNIT_gan.generatorA
+generatorB = UNIT_gan.generatorB
+#%%
+encoderA.load_weights('models/saved_models/20190526-175240/encoderA_epoch_100_weights.hdf5')
+encoderB.load_weights('models/saved_models/20190526-175240/encoderB_epoch_100_weights.hdf5')
+encoderShared.load_weights('models/saved_models/20190526-175240/encoderShared_epoch_100_weights.hdf5')
+decoderShared.load_weights('models/saved_models/20190526-175240/decoderShared_epoch_100_weights.hdf5')
+generatorA.load_weights('models/saved_models/20190526-175240/generatorA_epoch_100_weights.hdf5')
+generatorB.load_weights('models/saved_models/20190526-175240/generatorB_epoch_100_weights.hdf5')
+#%%
+fake_As_unit = []
+fake_As_label = []
+for n in range(b.shape[0]):
+    s = np.expand_dims(b[n, :,:], 0)
+    s = np.expand_dims(s, 3)
+    s = 2*s - 1
+    encodedB = encoderB.predict(s)
+    encodedShared = encoderShared.predict(encodedB)
+    decodedShared = decoderShared.predict(encodedShared)
+    fake_B = generatorA.predict(decodedShared)
+    fake_As_unit.append(fake_B)
+    fake_As_label.append(4) # 4 means unit
+#%%
+fake_As_unit = np.array(fake_As_unit)
+fake_As_label = np.array(fake_As_label)
+fake_As_unit_label = fake_As_label
+#%%
 G_A2B = GAN.G_B2A
 G_B2A = GAN.G_A2B
 D_A = GAN.D_B
@@ -475,6 +741,8 @@ print(unet_As.shape)
 unet_As_label = np.array(unet_As_label)
 print(unet_As_label.shape)
 #%%
+unet_As = 2* unet_As -1
+#%%
 fake_As = np.array(fake_As)
 print(fake_As.shape)
 #%%
@@ -485,7 +753,25 @@ unet_As = np.reshape(unet_As, (unet_As.shape[0], unet_As.shape[1]* unet_As.shape
 #%%
 fake_As = np.reshape(fake_As, (fake_As.shape[0], fake_As.shape[1]* fake_As.shape[2]))
 #%%
+
+fake_As_unit = np.squeeze(fake_As_unit)
+#%%
+fake_As_unit = np.reshape(fake_As_unit, (fake_As_unit.shape[0], fake_As_unit.shape[1]*fake_As_unit.shape[2]))
+#%%
+print(fake_As_unit.shape)
+#%%
+plt.imshow(np.reshape(fake_As[0,:], (256,256)))
+#%%
 a = np.reshape(a, (a.shape[0], a.shape[1] * a.shape[2]))
+#%%
+a = 2 * a - 1
+#%%
+a = (a + 1)/2.0
+#%%
+X = np.concatenate((a, fake_As_unit, fake_As, unet_As))
+y = np.concatenate((a_label, fake_As_unit_label, fake_As_label, unet_As_label))
+print(X.shape)
+print(y.shape)
 #%%
 X = np.concatenate((a,fake_As, unet_As))
 print(X.shape)
@@ -551,12 +837,16 @@ plt.figure(figsize=(16,10))
 sns.scatterplot(
     x="tsne-2d-one", y="tsne-2d-two",
     hue="y",
-    palette=sns.color_palette("hls",3),
+    palette=sns.color_palette("hls",4),
     data=df.loc[rndperm,:],
     legend="full",
     alpha=0.3
 )
-
+#%%
+print(np.max(fake_As_unit))
+print(np.min(fake_As_unit))
+print(np.max(a))
+print(np.min(a))
 #%%
 plt.figure(figsize=(16,10))
 sns.scatterplot(

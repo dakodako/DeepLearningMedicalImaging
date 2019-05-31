@@ -14,20 +14,20 @@ from PIL import Image
 import dataloader
 import datetime
 from time import localtime, strftime 
-#%%
-dl = dataloader.Dataloader(path = './datasets/train/*')
+print('+++++++++ loading images +++++++++')
+dl = dataloader.Dataloader(path = './datasets/medium/train/*')
 def custom_loss(lambda_1):
     def loss(y_true, y_pred):
         return K.mean(K.square(y_pred - y_true)) + lambda_1 * K.mean(K.abs(y_pred - y_true))
     return loss
-#%%
-n = 128
+print('++++++++++ contructing AUTOMAP +++++++++ ')
+n = 64
 inChannel = 2
 m1 = 32
 m2 = 64
 input_img = Input(shape = (n*n*inChannel,)) #2*n^2
 batch_size = 1
-epochs = 1
+epochs = 100	
 # simulating Fourier Transform: mapping from sensor domain to the image domain
 fc1 = Dense(n*n, activation = 'tanh')(input_img)
 fc2 = Dense(n*n, activation = 'tanh')(fc1)
@@ -45,7 +45,6 @@ automap = Model(input_img, deconv)
 automap.compile(loss=custom_loss(0.0001), optimizer = RMSprop())
 
 automap.summary()
-#%%
 ##train_dir = 'imagenet/train/*' # does not exist yet
 #val_dir = 'imagenet/val/*' # does not exist yet
 #train_X = read_imgs_in_freq(train_dir)
@@ -61,14 +60,14 @@ def saveModel(model, model_name, epoch, date_time):
 
         model_path_w = 'saved_model/{}/{}_epoch_{}_weights.hdf5'.format(date_time, model_name, epoch)
         model.save_weights(model_path_w)
-        model_path_m = 'saved_model/{}/{}_epoch_{}_model.json'.format(date_time, model_name, epoch)
-        model.save_weights(model_path_m)
 date_time = strftime("%Y%m%d-%H%M%S", localtime()) 
+print('+++++++++++++ Start Training +++++++++++++ ')
 for epoch in range(1,epochs + 1):
     print('epoch: ', epoch)
     for batch_i, (imgs, imgs_F) in enumerate(dl.load_batch()):
         print('batch: ', batch_i)
         loss = automap.train_on_batch(imgs_F, imgs)
-        print('MSE loss', loss[0])
-
+        print('MSE loss', loss)
+#filename = date_time + 'automap.hdf5'
+#automap.save_weights(filename)
 saveModel(automap, 'automap', epochs, date_time)
