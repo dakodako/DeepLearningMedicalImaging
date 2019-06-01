@@ -7,17 +7,20 @@ import os
 import random
 from random import sample
 #from matplotlib import pyplot as plt
+np.random.seed(42)
 #%%
 class Dataloader():
-    def __init__(self, path = './datasets/train/*'):
+    def __init__(self, path = './datasets/train/*',  batch_size = 10):
         ds = glob(path)
         self.img_path = []
         for n in range(len(ds)):
             if not os.path.isdir(ds[n]):
                 self.img_path.append(ds[n])
-        self.batch_size = 1
+        random.shuffle(self.img_path)
+        self.batch_size = batch_size
         self.n_batches = int(len(self.img_path)/self.batch_size)
         self.img_size = 64
+        self.normalize = True
     def read_image(self, path):
         img = Image.open(path).convert('LA')
         img = img.resize((self.img_size, self.img_size))
@@ -43,13 +46,16 @@ class Dataloader():
             img = img_gray[(m_w - int(self.img_size/2)):(m_w + int(self.img_size/2)), (m_h - int(self.img_size/2)):( m_h + int(self.img_size/2))]
         """
         return img_gray
-    def read_images(self, dir):
+    def read_images(self, dir, n_imgs):
         path = glob(dir)
         imgs = []
-
-        for i in range(len(path)):
+        imgs_f = []
+        for i in range(n_imgs):
             img = self.read_image(path[i])
+            img = img - np.mean(img)
+            img_f = self.to_freq_space_2d(img)
             imgs.append(img)
+            imgs_f.append(img_f)
             """
             img = np.array(Image.open(path[i]).convert('LA'))
             img_gray = np.squeeze(img[:,:,0])
@@ -67,9 +73,12 @@ class Dataloader():
                 img_cropped = img_gray[(m_w - 128):(m_w + 128), (m_h - 128):( m_h + 128)]
                 imgs.append(img_cropped)
             """
-
+        if self.normalize:
+            imgs = (imgs - np.min(imgs))/(np.max(imgs) - np.min(imgs))
         imgs = np.array(imgs)
-        return imgs
+        imgs_f = np.array(imgs_f)
+        imgs_f = np.reshape(imgs_f, (-1, imgs_f.shape[1] * imgs_f.shape[2] * 2))
+        return imgs, imgs_f
     def undersample(self, img_f, ratio):
         img_real = img_f[:,:,0]
         img_imag = img_f[:,:,1]
@@ -101,7 +110,7 @@ class Dataloader():
     def read_imgs_in_freq(self, dir):
         path = glob(dir)
         imgs_f = []
-        for i in range(len(path)):
+        for i in range(self.img_size):
             img_cropped = self.read_image(path[i])
             '''
             img = np.array(Image.open(path[i]).convert('LA'))
@@ -141,8 +150,19 @@ class Dataloader():
             imgs_f = np.reshape(imgs_f, (-1, imgs_f.shape[1]*imgs_f.shape[2]*imgs_f.shape[3]))
             yield imgs, imgs_f
 #%%
-#dl = Dataloader('./imagenet/*')
+#dl = Dataloader('imagenet/*', batch_size=1)
+#%%
+#imgs, imgs_f = dl.read_images('imagenet/*')
+#print(imgs.shape)
+#print(imgs_f.shape)
+#%%
+#plt.imshow(imgs[27,:,:], cmap = 'gray')
+#%%
 #for batch_i, (imgs, imgs_f) in enumerate(dl.load_batch()):
     #print(imgs.shape)
     #print(imgs_f.shape)
 #img = Image.open('imagenet/ILSVRC2011_val_00000009.JPEG')
+
+
+
+

@@ -47,7 +47,7 @@ automap.compile(loss=custom_loss(0.0001), optimizer = RMSprop())
 
 automap.summary()
 #%%
-automap.load_weights('automap/saved_model/20190529-142037/automap_epoch_100_weights.hdf5')
+automap.load_weights('automap/saved_model/20190530-104832/automap_epoch_100_weights.hdf5')
 
 #%%
 class Dataloader():
@@ -181,12 +181,12 @@ class Dataloader():
 #%%
 dl = Dataloader(path = 'imagenet/*')
 #%%
-img = dl.read_image('imagenet/ILSVRC2011_val_00000028.JPEG')
+img = dl.read_image('imagenet/ILSVRC2011_val_00000019.JPEG')
 
 #%%
 print(img.shape)
 #%%
-plt.imshow(img)
+plt.imshow(img, cmap = 'gray')
 #%%
 img_f = dl.to_freq_space_2d(img)
 img_f = np.reshape(img_f, (-1, 64*64*2))
