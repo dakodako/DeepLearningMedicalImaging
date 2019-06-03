@@ -213,7 +213,7 @@ class DataLoader():
         #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
         batch_images = np.random.choice(path, size = batch_size)
         imgs_A = []
         imgs_B = []
@@ -271,7 +271,7 @@ class DataLoader():
             mask = mask[y:y+height, x:x+width]
             return img, mask
         data_type = "train" if not is_testing else "test"
-        path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
         self.n_batches = int(len(path) / batch_size)
@@ -338,7 +338,7 @@ class CycleGAN():
         self.epochs = 100 # choose multiples of 25 since the models are save each 25th epoch
         self.save_interval = 1
         self.synthetic_pool_size = 50
-        self.data_loader = DataLoader(dataset_name = 'p2m4', img_res = (256,256))
+        self.data_loader = DataLoader(dataset_name = 'p2m8', img_res = (256,256))
         # Linear decay of learning rate, for both discriminators and generators
         self.use_linear_decay = False
         self.decay_epoch = 101  # The epoch where the linear decay of the learning rates start
@@ -714,7 +714,7 @@ class CycleGAN():
         # Linear decay
     
         # Start stopwatch for ETAs
-        start_time = time.time()
+        #start_time = time.time()
 
         for epoch in range(1, epochs + 1):
             for batch_i, (real_images_A, real_images_B) in enumerate(self.data_loader.load_batch(batch_size)):
@@ -728,6 +728,18 @@ class CycleGAN():
         self.saveModel(self.D_B, epochs)
         self.saveModel(self.G_A2B, epochs)
         self.saveModel(self.G_B2A, epochs) 
+        np.savetxt('saved_models/{}/D_losses.txt'.format(self.date_time), D_losses)
+        np.savetxt('saved_models/{}/DA_losses.txt'.format(self.date_time), DA_losses)
+        np.savetxt('saved_models/{}/DB_losses.txt'.format(self.date_time), DB_losses)
+        np.savetxt('saved_models/{}/G_losses.txt'.format(self.date_time), G_losses)
+        np.savetxt('saved_models/{}/GA_losses.txt'.format(self.date_time), GA_losses)
+        np.savetxt('saved_models/{}/GB_losses.txt'.format(self.date_time), GB_losses)
+        np.savetxt('saved_models/{}/reconstruction_losses.txt'.format(self.date_time), reconstruction_losses)
+        np.savetxt('saved_models/{}/gA_d_losses_synthetic.txt'.format(self.date_time), gA_d_losses_synthetic)
+        np.savetxt('saved_models/{}/gB_d_losses_synthetic.txt'.format(self.date_time), gB_d_losses_synthetic)
+        np.savetxt('saved_models/{}/gA_losses_reconstructed.txt'.format(self.date_time), gA_losses_reconstructed)
+        np.savetxt('saved_models/{}/gB_losses_reconstructed.txt'.format(self.date_time), gB_losses_reconstructed)
+        
     #===============================================================================
     # Help functions
 

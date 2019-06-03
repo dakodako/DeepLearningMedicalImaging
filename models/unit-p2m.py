@@ -21,7 +21,6 @@ import time
 import datetime 
 from glob import glob
 import os
-#%%
 class InstanceNormalization(Layer):
     """Instance normalization layer.
 
@@ -243,7 +242,7 @@ class DataLoader():
             img = img[y:y+height, x:x+width]
             mask = mask[y:y+height, x:x+width]
             return img, mask
-        data_type = "val" if not is_testing else "test"
+        data_type = "train" if not is_testing else "test"
         path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
@@ -306,7 +305,7 @@ class unit():
         self.lambda_2 = 100
         self.lambda_3 = self.lambda_1 
         self.lambda_4 = self.lambda_2 
-        self.dataloader = DataLoader(dataset_name = 'p2m4', img_res = (256,256))
+        self.dataloader = DataLoader(dataset_name = 'p2m8', img_res = (256,256))
         opt = Adam(self.learning_rate, self.beta_1, self.beta_2)
         self.date_time = strftime("%Y%m%d-%H%M%S", localtime()) 
         # Discriminator
@@ -576,10 +575,46 @@ class unit():
             print('guess_outAb: ', g_loss[12])
             print('guess_outBa: ', g_loss[13])
             print('guess_outAb: ', g_loss[14])
+            D_loss.append(dA_loss[0] + dB_loss[0])
+            DA_loss.append(dA_loss[0])
+            DB_loss.append(dB_loss[0])
+            G_loss.append(g_loss[0])
+            sA_loss.append(g_loss[1])
+            sB_loss.append(g_loss[2])
+            csA_loss.append(g_loss[3])
+            csB_loss.append(g_loss[4])
+            out_Aa_mae.append(g_loss[5])
+            out_Bb_mae.append(g_loss[6])
+            c_Ab_Ba_mae.append(g_loss[7])
+            c_Ba_Ab_mae.append(g_loss[8])
+            guess_outBa.append(g_loss[9])
+            guess_outAb.append(g_loss[10])
+            dA_loss_r.append(dA_loss_real[0])
+            dB_loss_r.append(dB_loss_real[0])
+            dA_loss_f.append(dA_loss_fake[0])
+            dB_loss_f.append(dB_loss_fake[0])
         #A_train = self.A_train 
         #B_train = self.B_train 
         self.epochs = epochs 
         self.batch_size = batch_size 
+        D_loss = []
+        DA_loss = []
+        DB_loss = []
+        G_loss = []
+        sA_loss = []
+        sB_loss = []
+        csA_loss = []
+        csB_loss = []
+        out_Aa_mae = []
+        out_Bb_mae = []
+        c_Ab_Ba_mae = []
+        c_Ba_Ab_mae = []
+        dA_loss_f = []
+        dB_loss_f = []
+        dA_loss_r = []
+        dB_loss_r = []
+        guess_outBa = []
+        guess_outAb = []
         dummy = np.zeros(shape = ((self.batch_size,) + self.latent_dim))
         label_shape1 = (batch_size,) + self.discriminatorA.output_shape[0][1:]
         label_shape2 = (batch_size,) + self.discriminatorA.output_shape[1][1:]
@@ -594,11 +629,8 @@ class unit():
 
         real_labels = [real_labels1, real_labels2, real_labels3]
         synthetic_labels = [synthetic_labels1, synthetic_labels2, synthetic_labels3]
-        for epoch in range(epochs + 1):
-            print('epoch',epoch)
+        for epoch in range(epochs):
             for batch_i, (real_images_A, real_images_B) in enumerate(self.dataloader.load_batch(batch_size = 1)):
-                print(real_images_A.shape)
-                print(real_images_B.shape)
                 run_training_iteration(batch_i, real_images_A, real_images_B)
         self.saveModel(self.discriminatorA, 'discriminatorA', epochs)
         self.saveModel(self.discriminatorB, 'discriminatorB', epochs)
@@ -608,7 +640,24 @@ class unit():
         self.saveModel(self.encoderB, 'encoderB', epochs)
         self.saveModel(self.decoderShared, 'decoderShared', epochs)
         self.saveModel(self.encoderShared, 'encoderShared', epochs)
-
+        np.savetxt('saved_model/{}/D_loss.txt'.format(self.date_time), D_loss)
+        np.savetxt('saved_model/{}/DA_loss.txt'.format(self.date_time), DA_loss)
+        np.savetxt('saved_model/{}/DB_loss.txt'.format(self.date_time), DB_loss)
+        np.savetxt('saved_model/{}/G_loss.txt'.format(self.date_time), G_loss)
+        np.savetxt('saved_model/{}/sA_loss.txt'.format(self.date_time), sA_loss)
+        np.savetxt('saved_model/{}/sB_loss.txt'.format(self.date_time), sB_loss)
+        np.savetxt('saved_model/{}/csA_loss.txt'.format(self.date_time), csA_loss)
+        np.savetxt('saved_model/{}/csB_loss.txt'.format(self.date_time), csB_loss)
+        np.savetxt('saved_model/{}/out_Aa_mae.txt'.format(self.date_time), out_Aa_mae)
+        np.savetxt('saved_model/{}/out_Bb_mae.txt'.format(self.date_time), out_Bb_mae)
+        np.savetxt('saved_model/{}/c_Ab_Ba_mae.txt'.format(self.date_time), c_Ab_Ba_mae)
+        np.savetxt('saved_model/{}/c_Ba_Ab_mae.txt'.format(self.date_time), c_Ba_Ab_mae)
+        np.savetxt('saved_model/{}/dA_loss_f.txt'.format(self.date_time), dA_loss_f)
+        np.savetxt('saved_model/{}/dB_loss_f.txt'.format(self.date_time), dB_loss_f)
+        np.savetxt('saved_model/{}/dA_loss_r.txt'.format(self.date_time), dA_loss_r)
+        np.savetxt('saved_model/{}/dB_loss_r.txt'.format(self.date_time), dB_loss_r)
+        np.savetxt('saved_model/{}/guess_outBa.txt'.format(self.date_time), guess_outBa)
+        np.savetxt('saved_model/{}/guess_outAb.txt'.format(self.date_time), guess_outAb)
     def saveModel(self, model, model_name, epoch):
         directory = os.path.join('saved_model', self.date_time)
         if not os.path.exists(directory):
@@ -623,19 +672,6 @@ class unit():
 
             
 
-    
-#%%
-UNIT = unit()
-#%%
-UNIT.discriminatorA.summary()
-#%%
-UNIT.encoderA.summary()
-#%%
-UNIT.encoderShared.summary()
-#%%
-UNIT.decoderShared.summary()
-#%%
-UNIT.generatorA.summary()
-
-#%%
+UNIT = unit()    
 UNIT.train(epochs = 1)
+
