@@ -16,6 +16,7 @@ import datetime
 from time import localtime, strftime 
 import matplotlib.pyplot as plt
 from random import sample
+import random
 #%%
 def search_max_min_batch(path, num_images, normalize):
     max_total = 0
@@ -164,7 +165,7 @@ automap.compile(loss='mean_squared_error', optimizer = optimizer)
 
 automap.summary()
 #%%
-automap.load_weights('automap/saved_model/20190602-025228/automap_epoch_100_weights.hdf5')
+automap.load_weights('automap/saved_model/20190603-113141/automap_epoch_100_weights.hdf5')
 #%%
 path = glob('imagenet/*')
 results = []
