@@ -213,7 +213,7 @@ class DataLoader():
         #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
         batch_images = np.random.choice(path, size = batch_size)
         imgs_A = []
         imgs_B = []
@@ -271,7 +271,7 @@ class DataLoader():
             mask = mask[y:y+height, x:x+width]
             return img, mask
         data_type = "train" if not is_testing else "test"
-        path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
         self.n_batches = int(len(path) / batch_size)
@@ -335,10 +335,10 @@ class CycleGAN():
         self.beta_1 = 0.5
         self.beta_2 = 0.999
         self.batch_size = 1
-        self.epochs = 100 # choose multiples of 25 since the models are save each 25th epoch
+        self.epochs = 200 # choose multiples of 25 since the models are save each 25th epoch
         self.save_interval = 1
         self.synthetic_pool_size = 50
-        self.data_loader = DataLoader(dataset_name = 'p2m4', img_res = (256,256))
+        self.data_loader = DataLoader(dataset_name = 'p2m8', img_res = (256,256))
         # Linear decay of learning rate, for both discriminators and generators
         self.use_linear_decay = False
         self.decay_epoch = 101  # The epoch where the linear decay of the learning rates start
@@ -933,7 +933,7 @@ class ImagePool():
 #%%
 if __name__ == '__main__':
     GAN = CycleGAN()
-    GAN.train(epochs = 100, batch_size=1, save_interval=1)
+    GAN.train(epochs = 200, batch_size=1, save_interval=1)
 
 #%%
 #GAN = CycleGAN()

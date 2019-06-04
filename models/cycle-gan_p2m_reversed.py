@@ -335,7 +335,7 @@ class CycleGAN():
         self.beta_1 = 0.5
         self.beta_2 = 0.999
         self.batch_size = 1
-        self.epochs = 100 # choose multiples of 25 since the models are save each 25th epoch
+        self.epochs = 200 # choose multiples of 25 since the models are save each 25th epoch
         self.save_interval = 1
         self.synthetic_pool_size = 50
         self.data_loader = DataLoader(dataset_name = 'p2m8', img_res = (256,256))
@@ -945,7 +945,7 @@ class ImagePool():
 #%%
 if __name__ == '__main__':
     GAN = CycleGAN()
-    GAN.train(epochs = 100, batch_size=1, save_interval=1)
+    GAN.train(epochs = 200, batch_size=1, save_interval=1)
 
 #%%
 #GAN = CycleGAN()

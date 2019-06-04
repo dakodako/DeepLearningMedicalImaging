@@ -1,10 +1,16 @@
 #%%
-import numpy as np 
-import os
-#from matplotlib import pyplot as plt 
+#import pydicom
+from keras import models
+from keras.models import load_model, Model, Sequential
+#from pydicom.data import get_testdata_files
+import numpy as np
+import matplotlib.pyplot as plt
+#from scipy.misc import imresize, imrotate
+from skimage.transform import rotate, resize
+import nibabel as nib
+import glob
+import sys
 from keras.layers import Input,Dense,Flatten,Dropout,merge,Reshape,Conv2D,MaxPooling2D,UpSampling2D,Conv2DTranspose
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model,Sequential
 from keras.callbacks import ModelCheckpoint
 from keras.optimizers import Adadelta, RMSprop,SGD,Adam
 from keras import regularizers
@@ -38,6 +44,21 @@ def search_max_min_batch(path, num_images, normalize):
         if np.min(img) < min_total:
             min_total = np.min(img)
     return max_total_f, min_total_f, max_total, min_total
+def load_data(path):
+    random.shuffle(path)
+    #max_f, min_f, max, min = search_max_min_batch(path, num_images = num_images, normalize = False)
+    img = np.random.choice(path)
+    img = read_image(img, img_size = 64)
+    img = img - np.mean(img)
+    #img = (img - np.min(img))/(np.max(img) - np.min(img))
+    img_f = to_freq_space_2d(img)
+    #img_f = img_f - np.mean(img_f)
+    #img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
+    img = np.asarray(img, dtype = float)
+    img_f = np.asarray(img_f, dtype = float)
+    img = np.reshape(img, (-1, img.shape[0], img.shape[1],1))
+    img_f = np.reshape(img_f, (-1, img_f.shape[0]* img_f.shape[1] * img_f.shape[2]))
+    return img, img_f
 def load_batch(path, batch_size, num_images):
     random.shuffle(path)
     n_batches = int(num_images/batch_size)
@@ -134,10 +155,6 @@ def to_freq_space_2d(img):
     return img_real_imag  
 
 #%%
-def custom_loss(lambda_1):
-    def loss(y_true, y_pred):
-        return K.mean(K.square(y_pred - y_true)) + lambda_1 * K.mean(K.abs(y_pred - y_true))
-    return loss
 #%%
 n = 64
 inChannel = 2
@@ -166,30 +183,100 @@ automap.compile(loss='mean_squared_error', optimizer = optimizer)
 automap.summary()
 #%%
 automap.load_weights('automap/saved_model/20190603-113141/automap_epoch_100_weights.hdf5')
+print(len(automap.layers))
 #%%
-path = glob('imagenet/*')
-results = []
-inputs = []
-for batch_i, (imgs, imgs_f) in enumerate(load_batch(path, batch_size = 1,  num_images = 28)):
-    result = automap.predict(imgs_f)
-    print('loss: ', np.mean(np.square(result - imgs)))
-    result = np.array(result)
-    result = np.squeeze(result)
-    imgs = np.squeeze(imgs)
-    results.append(result)
-    inputs.append(imgs)
-    
+weights = automap.get_weights()
+#%%
+print(len(weights))
+print(len(weights[2]))
+#%%
+plt.imshow(np.reshape(weights[2], (4096,4096)), cmap = 'magma')
+#%%
+path = glob('/Volumes/Samsung_T5/automap_datasets/val/*')
+print(len(path))
+#%%
+img, img_f = load_data(path)
+print(img.shape)
+print(img_f.shape)
+#%%
+plt.imshow(np.squeeze(img), cmap = 'gray')
+#%%
+result = automap.predict(img_f)
+#%%
+plt.imshow(np.squeeze(result), cmap = 'gray')
+#%%
+fc3 = automap.layers[3]
+fc3_output = fc3.output
+fc3_activations_model = Model(inputs = automap.input, outputs = fc3_output)
+fc3_activations = fc3_activations_model.predict(img_f)
+#model = load_model('autoencoder2_petra4.h5')
+#model.summary()
+#%%
+print(fc3_activations.shape)
+#fc3_activations = np.reshape(fc3_activations, (64,64))
+#%%
+plt.imshow(np.squeeze(fc3_activations))
+#%%
+filepath_test_X = 'PETRA2/*'
+filepath_test_ground = 'MP2RAGE2/*'
+test_X = open_images(filepath_test_X)
+test_ground = open_images(filepath_test_ground)
+print(test_X.shape)
+#%%
+test_img = test_X[30,:,:,:]
+plt.imshow(test_img[:,:,0], cmap = 'gray')
+#%%
+test_img_tensor = np.expand_dims(test_img, axis = 0)
+print(test_img_tensor.shape)
+layer_outputs = [layer.output for layer in model.layers[:59]]
+print(len(layer_outputs))
 
+#%%
+pred = model.predict(test_img_tensor)
+plt.imshow(pred[0,:,:,0], cmap = 'gray')
+#%%
+
+im = plt.imshow(np.abs(pred[0,:,:,0]-test_ground[30,:,:,0]))
 
 #%%
-results = np.array(results)
-print(results.shape)
-inputs = np.array(inputs)
-print(inputs.shape)
-#%%
-plt.imshow(results[17,:,:], cmap = 'gray')
+activation_model = models.Model(inputs = model.input, outputs = layer_outputs)
+activations = activation_model.predict(test_img_tensor)
+print(len(activations))
 
 #%%
-plt.imshow(inputs[17,:,:], cmap = 'gray')
+layer_names = []
+for layer in model.layers[:59]:
+    layer_names.append(layer.name)
 
-#%%
+images_per_row = 16
+
+for layer_name, layer_activation in zip(layer_names, activations):
+    n_features = layer_activation.shape[-1]
+    size = layer_activation.shape[1]
+    print(size)
+   
+    n_cols = n_features // images_per_row
+    print(n_cols)
+    display_grid = np.zeros((size*n_cols, images_per_row * size))
+    print(display_grid.shape)
+    for col in range(n_cols):
+        for row in range(images_per_row):
+            channel_image = layer_activation[0,:,:, col*images_per_row + row]
+            #channel_image = np.log(channel_image)
+            channel_image -= channel_image.mean()
+            channel_image /= channel_image.std()
+            channel_image *= 64
+            channel_image += 128
+            channel_image = np.clip(channel_image, 0, 255).astype('uint8')
+            display_grid[col*size : (col+1)*size,
+                        row*size:(row+1)*size] = channel_image
+    if n_cols != 0:
+        scale = 1./size
+        fig = plt.figure(figsize=(scale*display_grid.shape[1], scale * display_grid.shape[0]))
+        print(display_grid.shape)
+        plt.title(layer_name)
+        plt.grid(False)
+        figname = 'activations/p2m/'+layer_name + '.png'
+        plt.imshow(display_grid, aspect='auto')
+        plt.show()
+        fig.savefig(figname, dpi=fig.dpi)

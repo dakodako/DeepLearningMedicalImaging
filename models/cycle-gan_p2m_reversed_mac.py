@@ -6,17 +6,14 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.core import Dense
 from keras.optimizers import Adam
 from keras.backend import mean
-from keras.models import Model, model_from_json, load_model
+from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from keras.engine.topology import Network
 from keras import initializers, regularizers, constraints
-import numpy as np 
-from glob import glob 
-import nibabel as nib 
-import sys 
-import matplotlib.pyplot as plt
-from PIL import Image
-import json
+#%%
+from collections import OrderedDict
+#from scipy.misc import imsave, toimage  # has depricated
+import numpy as np
 import random
 import datetime
 import time
@@ -25,136 +22,20 @@ import math
 import csv
 import sys
 import os
+#%%
+from PIL import Image
 from keras.utils import Sequence
+#from skimage.transform import resize, rotate
+from glob import glob 
+import nibabel as nib
+import matplotlib.pyplot as plt
+#%%
 import keras.backend as K
 import tensorflow as tf
 #%%
-class DataLoader():
-    def __init__(self, dataset_name, img_res = (128,128)):
-        self.img_res = img_res
-        self.dataset_name = dataset_name
 
-    def load_data(self, batch_size = 1, is_testing = False, is_jitter = False):
-        def randomCrop(img , mask, width, height):
-            assert img.shape[0] >= height
-            assert img.shape[1] >= width
-            assert img.shape[0] == mask.shape[0]
-            assert img.shape[1] == mask.shape[1]
-            x = np.random.randint(0, img.shape[1] - width)
-            y = np.random.randint(0, img.shape[0] - height)
-            img = img[y:y+height, x:x+width]
-            mask = mask[y:y+height, x:x+width]
-            return img, mask
-    
-        data_type = "train" if not is_testing else "test"
-        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
-        #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('datasets/p2m4/val/*')
-        batch_images = np.random.choice(path, size = batch_size)
-        imgs_A = []
-        imgs_B = []
-        for img_path in batch_images:
-            img = nib.load(img_path)
-            img = img.get_data()
-            _,_,w = img.shape
-            _w = int(w/2)
-            img_A, img_B = img[:,:,:_w], img[:,:,_w:]
-            #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
-            img_A = np.squeeze(img_A)
-            img_B = np.squeeze(img_B)
-            #img_A = Image.fromarray(img_A, mode = 'F')
-            #img_B = Image.fromarray(img_B, mode = 'F')
-            #img_A = img_A.resize(size = (self.img_res[0], self.img_res[1]))
-            #img_B = img_B.resize(size = (self.img_res[0], self.img_res[1]))
-            #img_A = img_A.resize( (self.img_res[0],self.img_res[1]))
-            #img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
-            if not is_testing and np.random.random() <0.5 and is_jitter:
-                # 1. Resize an image to bigger height and width
-                img_A = Image.fromarray(img_A, mode = 'F')
-                img_B = Image.fromarray(img_B, mode = 'F')
-                img_A = img_A.resize(shape = (img_A.shape[0] + 64, img_A.shape[1] + 64))
-                img_B = img_B.resize(shape = (img_B.shape[0] + 64, img_B.shape[1] + 64))
-                img_A = np.array(img_A)
-                img_B = np.array(img_B)
-                # 2. Randomly crop the image
-                img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
-                # 3. Randomly flip the image horizontally
-                img_A = np.fliplr(img_A)
-                img_B = np.fliplr(img_B)
-            m_A = np.max(img_A)
-            mi_A = np.min(img_A)
-            img_A = (img_A - mi_A)/(m_A - mi_A)
-            m_B = np.max(img_B)
-            mi_B = np.min(img_B)
-            img_B = (img_B - mi_B)/(m_B - mi_B)
-            imgs_A.append(img_A)
-            imgs_B.append(img_B)
-        imgs_A = np.asarray(imgs_A, dtype=float)
-        imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
-        imgs_B = np.asarray(imgs_B, dtype = float)
-        imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1],imgs_B.shape[2],1))
-        return imgs_A, imgs_B
-    
-    def load_batch(self, batch_size = 1, is_testing = False, is_jitter = False):
-        def randomCrop(img , mask, width, height):
-            assert img.shape[0] >= height
-            assert img.shape[1] >= width
-            assert img.shape[0] == mask.shape[0]
-            assert img.shape[1] == mask.shape[1]
-            x = np.random.randint(0, img.shape[1] - width)
-            y = np.random.randint(0, img.shape[0] - height)
-            img = img[y:y+height, x:x+width]
-            mask = mask[y:y+height, x:x+width]
-            return img, mask
-        data_type = "train" if not is_testing else "test"
-        path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
-        self.n_batches = int(len(path) / batch_size)
-        for i in range(self.n_batches-1):
-            batch = path[i*batch_size:(i+1)*batch_size]
-            imgs_A, imgs_B = [], []
-            for img in batch:
-                img = nib.load(img)
-                img = img.get_data()
-                _,_,w = img.shape
-                _w = int(w/2)
-                img_A, img_B = img[:,:,:_w], img[:,:,_w:]
-                #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
-                img_A = np.squeeze(img_A)
-                img_B = np.squeeze(img_B)
-                #img_A = resize(img_A, (self.img_res[0],self.img_res[1]))
-                #img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
-                #print(img_A.shape)
-                #print(img_B.shape)
-                if not is_testing and np.random.random() <0.5 and is_jitter:
-                    # 1. Resize an image to bigger height and width
-                    img_A = Image.fromarray(img_A, mode = 'F')
-                    img_B = Image.fromarray(img_B, mode = 'F')
-                    img_A = img_A.resize(shape = (img_A.shape[0] + 64, img_A.shape[1] + 64))
-                    img_B = img_B.resize(shape = (img_B.shape[0] + 64, img_B.shape[1] + 64))
-                    img_A = np.array(img_A)
-                    img_B = np.array(img_B)
-                    # 2. Randomly crop the image
-                    img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
-                    # 3. Randomly flip the image horizontally
-                    img_A = np.fliplr(img_A)
-                    img_B = np.fliplr(img_B)
-                m_A = np.max(img_A)
-                mi_A = np.min(img_A)
-                img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
-                m_B = np.max(img_B)
-                mi_B = np.min(img_B)
-                img_B = 2* (img_B - mi_B)/(m_B - mi_B) - 1
-                imgs_A.append(img_A)
-                imgs_B.append(img_B)
-            imgs_A = np.asarray(imgs_A, dtype=float)
-            imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
-            imgs_B = np.asarray(imgs_B, dtype = float)
-            imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1], imgs_B.shape[2],1))
-            yield imgs_A, imgs_B
+
+np.random.seed(seed=12345)
 class InstanceNormalization(Layer):
     """Instance normalization layer.
 
@@ -297,7 +178,7 @@ class InstanceNormalization(Layer):
         }
         base_config = super(InstanceNormalization, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-#%%
+
 class ReflectionPadding2D(Layer):
     def __init__(self, padding=(1, 1), **kwargs):
         self.padding = tuple(padding)
@@ -310,6 +191,133 @@ class ReflectionPadding2D(Layer):
     def call(self, x, mask=None):
         w_pad, h_pad = self.padding
         return tf.pad(x, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]], 'REFLECT')
+#%%
+class DataLoader():
+    def __init__(self, dataset_name, img_res = (256,256)):
+        self.img_res = img_res
+        self.dataset_name = dataset_name
+
+    def load_data(self, batch_size = 1, is_testing = False, is_jitter = False):
+        def randomCrop(img , mask, width, height):
+            assert img.shape[0] >= height
+            assert img.shape[1] >= width
+            assert img.shape[0] == mask.shape[0]
+            assert img.shape[1] == mask.shape[1]
+            x = np.random.randint(0, img.shape[1] - width)
+            y = np.random.randint(0, img.shape[0] - height)
+            img = img[y:y+height, x:x+width]
+            mask = mask[y:y+height, x:x+width]
+            return img, mask
+    
+        data_type = "train" if not is_testing else "val"
+        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
+        #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
+        batch_images = np.random.choice(path, size = batch_size)
+        imgs_A = []
+        imgs_B = []
+        for img_path in batch_images:
+            img = nib.load(img_path)
+            img = img.get_data()
+            _,_,w = img.shape
+            _w = int(w/2)
+            img_B, img_A = img[:,:,:_w], img[:,:,_w:]
+            #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
+            img_A = np.squeeze(img_A)
+            img_B = np.squeeze(img_B)
+            #img_A = Image.fromarray(img_A, mode = 'F')
+            #img_B = Image.fromarray(img_B, mode = 'F')
+            #img_A = img_A.resize(size = (self.img_res[0], self.img_res[1]))
+            #img_B = img_B.resize(size = (self.img_res[0], self.img_res[1]))
+            #img_A = img_A.resize( (self.img_res[0],self.img_res[1]))
+            #img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
+            if not is_testing and np.random.random() <0.5 and is_jitter:
+                # 1. Resize an image to bigger height and width
+                img_A = Image.fromarray(img_A, mode = 'F')
+                img_B = Image.fromarray(img_B, mode = 'F')
+                img_A = img_A.resize(shape = (img_A.shape[0] + 64, img_A.shape[1] + 64))
+                img_B = img_B.resize(shape = (img_B.shape[0] + 64, img_B.shape[1] + 64))
+                img_A = np.array(img_A)
+                img_B = np.array(img_B)
+                # 2. Randomly crop the image
+                img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
+                # 3. Randomly flip the image horizontally
+                img_A = np.fliplr(img_A)
+                img_B = np.fliplr(img_B)
+            m_A = np.max(img_A)
+            mi_A = np.min(img_A)
+            img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+            m_B = np.max(img_B)
+            mi_B = np.min(img_B)
+            img_B = 2* (img_B - mi_B)/(m_B - mi_B) -1 
+            imgs_A.append(img_A)
+            imgs_B.append(img_B)
+        imgs_A = np.asarray(imgs_A, dtype=float)
+        imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
+        imgs_B = np.asarray(imgs_B, dtype = float)
+        imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1],imgs_B.shape[2],1))
+        return imgs_A, imgs_B
+    
+    def load_batch(self, batch_size = 1, is_testing = False, is_jitter = False):
+        def randomCrop(img , mask, width, height):
+            assert img.shape[0] >= height
+            assert img.shape[1] >= width
+            assert img.shape[0] == mask.shape[0]
+            assert img.shape[1] == mask.shape[1]
+            x = np.random.randint(0, img.shape[1] - width)
+            y = np.random.randint(0, img.shape[0] - height)
+            img = img[y:y+height, x:x+width]
+            mask = mask[y:y+height, x:x+width]
+            return img, mask
+        data_type = "train" if not is_testing else "test"
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
+        #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
+        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' % (self.dataset_name,data_type)) 
+        self.n_batches = int(len(path) / batch_size)
+        for i in range(self.n_batches-1):
+            batch = path[i*batch_size:(i+1)*batch_size]
+            imgs_A, imgs_B = [], []
+            for img in batch:
+                img = nib.load(img)
+                img = img.get_data()
+                _,_,w = img.shape
+                _w = int(w/2)
+                img_B, img_A = img[:,:,:_w], img[:,:,_w:]
+                # img_B is mp2rage, img_A is petra
+                #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
+                img_A = np.squeeze(img_A)
+                img_B = np.squeeze(img_B)
+                #img_A = resize(img_A, (self.img_res[0],self.img_res[1]))
+                #img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
+                #print(img_A.shape)
+                #print(img_B.shape)
+                if not is_testing and np.random.random() <0.5 and is_jitter:
+                    # 1. Resize an image to bigger height and width
+                    img_A = Image.fromarray(img_A, mode = 'F')
+                    img_B = Image.fromarray(img_B, mode = 'F')
+                    img_A = img_A.resize(shape = (img_A.shape[0] + 64, img_A.shape[1] + 64))
+                    img_B = img_B.resize(shape = (img_B.shape[0] + 64, img_B.shape[1] + 64))
+                    img_A = np.array(img_A)
+                    img_B = np.array(img_B)
+                    # 2. Randomly crop the image
+                    img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
+                    # 3. Randomly flip the image horizontally
+                    img_A = np.fliplr(img_A)
+                    img_B = np.fliplr(img_B)
+                m_A = np.max(img_A)
+                mi_A = np.min(img_A)
+                img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+                m_B = np.max(img_B)
+                mi_B = np.min(img_B)
+                img_B = 2* (img_B - mi_B)/(m_B - mi_B) - 1
+                imgs_A.append(img_A)
+                imgs_B.append(img_B)
+            imgs_A = np.asarray(imgs_A, dtype=float)
+            imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
+            imgs_B = np.asarray(imgs_B, dtype = float)
+            imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1], imgs_B.shape[2],1))
+            yield imgs_A, imgs_B
 #%%
 class CycleGAN():
     def __init__(self, lr_D=2e-4, lr_G=2e-4, image_shape = (256, 256, 1),
@@ -328,10 +336,10 @@ class CycleGAN():
         self.beta_1 = 0.5
         self.beta_2 = 0.999
         self.batch_size = 1
-        self.epochs = 100 # choose multiples of 25 since the models are save each 25th epoch
+        self.epochs = 200 # choose multiples of 25 since the models are save each 25th epoch
         self.save_interval = 1
         self.synthetic_pool_size = 50
-        self.data_loader = DataLoader(dataset_name = 'p2m4', img_res = (256,256))
+        self.data_loader = DataLoader(dataset_name = 'p2m7', img_res = (256,256))
         # Linear decay of learning rate, for both discriminators and generators
         self.use_linear_decay = False
         self.decay_epoch = 101  # The epoch where the linear decay of the learning rates start
@@ -665,7 +673,7 @@ class CycleGAN():
         # ======================================================================
         # Begin training
         # ======================================================================
-        #training_history = OrderedDict()
+        training_history = OrderedDict()
 
         DA_losses = []
         DB_losses = []
@@ -707,10 +715,11 @@ class CycleGAN():
         # Linear decay
     
         # Start stopwatch for ETAs
-        start_time = time.time()
+        #start_time = time.time()
 
         for epoch in range(1, epochs + 1):
             for batch_i, (real_images_A, real_images_B) in enumerate(self.data_loader.load_batch(batch_size)):
+                # A are mp2rage B are petra
                 run_training_iteration(  epoch_iterations = 1)
             #if epoch % save_interval == 0:
                 #print('\n', '\n', '-------------------------Saving images for epoch', epoch, '-------------------------', '\n', '\n')
@@ -721,6 +730,18 @@ class CycleGAN():
         self.saveModel(self.D_B, epochs)
         self.saveModel(self.G_A2B, epochs)
         self.saveModel(self.G_B2A, epochs) 
+        np.savetxt('saved_models/{}/D_losses.txt'.format(self.date_time), D_losses)
+        np.savetxt('saved_models/{}/DA_losses.txt'.format(self.date_time), DA_losses)
+        np.savetxt('saved_models/{}/DB_losses.txt'.format(self.date_time), DB_losses)
+        np.savetxt('saved_models/{}/G_losses.txt'.format(self.date_time), G_losses)
+        np.savetxt('saved_models/{}/GA_losses.txt'.format(self.date_time), GA_losses)
+        np.savetxt('saved_models/{}/GB_losses.txt'.format(self.date_time), GB_losses)
+        np.savetxt('saved_models/{}/reconstruction_losses.txt'.format(self.date_time), reconstruction_losses)
+        np.savetxt('saved_models/{}/gA_d_losses_synthetic.txt'.format(self.date_time), gA_d_losses_synthetic)
+        np.savetxt('saved_models/{}/gB_d_losses_synthetic.txt'.format(self.date_time), gB_d_losses_synthetic)
+        np.savetxt('saved_models/{}/gA_losses_reconstructed.txt'.format(self.date_time), gA_losses_reconstructed)
+        np.savetxt('saved_models/{}/gB_losses_reconstructed.txt'.format(self.date_time), gB_losses_reconstructed)
+        
     #===============================================================================
     # Help functions
 
@@ -876,6 +897,7 @@ class CycleGAN():
             writer = csv.writer(csv_file, delimiter=',')
             writer.writerow(keys)
             writer.writerows(zip(*[history[key] for key in keys]))
+
 class ImagePool():
     def __init__(self, pool_size):
         self.pool_size = pool_size
@@ -922,117 +944,25 @@ class ImagePool():
 
         return return_images
 
+#%%
+if __name__ == '__main__':
+    GAN = CycleGAN()
+    GAN.train(epochs = 200, batch_size=1, save_interval=1)
 
 #%%
-data_loader = DataLoader(dataset_name = 'p2m4', img_res=(256,256))
+dl = DataLoader(dataset_name = 'p2m8')
+a,b = dl.load_data(is_testing=True)
+
 #%%
-b, a = data_loader.load_data(batch_size=1, is_testing= True)
 print(a.shape)
 
 #%%
-print(np.min(a))
-print(np.max(a))
-#%%
-a = 2.0*a - 1
-b = 2.0*b - 1
-#%%
-GAN = CycleGAN()
-G_A2B = GAN.G_A2B
-G_B2A = GAN.G_B2A
-D_A = GAN.D_A
-D_B = GAN.D_B
-#%%
-unet_model = load_model('models/u-net-p2m_l2_2.h5')
-#%%
-unet_pred = unet_model.predict(b)
-print(np.min(b))
-print(np.max(b))
-loss_unet = np.abs(unet_pred - a)
-#%%
-plt.imshow(np.squeeze(unet_pred), cmap = 'gray')
-#%%
-G_A2B.summary()
-#%%
-#with open('models/saved_models/20190519-012230/G_A2B_model_model_epoch_100.json','r') as f:
-    #model_json = json.load(f)
-#%%
-#model = model_from_json(model_json)
-#%%
-G_A2B.load_weights('models/saved_models/20190603-232225/G_A2B_model_weights_epoch_100.hdf5')
-G_B2A.load_weights('models/saved_models/20190603-232225/G_B2A_model_weights_epoch_100.hdf5')
-D_A.load_weights('models/saved_models/20190603-232225/D_A_model_weights_epoch_100.hdf5')
-D_B.load_weights('models/saved_models/20190603-232225/D_B_model_weights_epoch_100.hdf5')
+plt.imshow(np.squeeze(a), cmap = 'gray')
 
 #%%
-plt.imshow(np.squeeze(b), cmap = 'gray')
+test_img = nib.load('datasets/p2m8/val/2999.nii.gz')
+test_img = test_img.get_data()
 #%%
-fake_A = G_B2A.predict(b)
-fake_B = G_A2B.predict(fake_A)
-loss_B2A = np.abs(fake_A - a)
-#%%
-plt.figure(figsize=(20,5))
-plt.subplot(1,4,1)
-plt.imshow(np.squeeze(a), cmap = 'gray')
-plt.subplot(1,4,3)
-plt.imshow(np.squeeze(b), cmap = 'gray')
-plt.subplot(1,4,2)
-plt.imshow(np.squeeze(fake_A), cmap = 'gray')
-plt.subplot(1,4,4)
-plt.imshow(np.squeeze(loss_B2A))
-plt.savefig('cycle-gan-result.png')
-#%%
-print(np.mean(loss_B2A))
-#%%
-fake_A_score = D_A.predict()
-print(np.mean(fake_A_score))
-#%%
-plt.imshow(np.squeeze(fake_B), cmap  = 'gray')
-#%%
-plt.imshow(np.squeeze(b), cmap='gray')
-#%%
-plt.figure(figsize=(20,5))
-plt.subplot(1,4,1)
-plt.imshow(np.squeeze(a), cmap = 'gray')
-plt.subplot(1,4,3)
-plt.imshow(np.squeeze(b), cmap = 'gray')
-plt.subplot(1,4,2)
-plt.imshow(np.squeeze(unet_pred), cmap = 'gray')
-plt.subplot(1,4,4)
-plt.imshow(np.squeeze(loss_unet))
-plt.savefig('unet-result.png')
-#%%
-#plt.figure(figsize=(10,15))
-plt.subplot(211)
-plt.imshow(np.squeeze(loss_unet), cmap=plt.cm.BuPu_r)
-plt.subplot(212)
-plt.imshow(np.squeeze(loss_B2A), cmap=plt.cm.BuPu_r)
+plt.imshow(np.squeeze(test_img), cmap = 'gray')
 
-plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
-cax = plt.axes([1, 0.1, 0.075, 0.8])
-plt.colorbar(cax=cax)
-plt.savefig('errormap.png')
 #%%
-print(np.min(fake_A))
-print(np.max(fake_A))
-print(np.min(a))
-print(np.max(a))
-#%%
-plt.imshow(np.squeeze(loss_B2A))
-#%%
-plt.imshow(np.squeeze(fake_A), cmap = 'gray')
-#%%
-plt.imshow(np.squeeze(fake_B), cmap = 'gray')
-#%%
-plt.imshow(np.squeeze(b), cmap = 'gray')
-#%%
-plt.imshow(np.squeeze(fake_A), cmap = 'gray')
-#%%
-plt.imshow(np.squeeze(a), cmap = 'gray')
-#%%
-score_fake_A = D_A.predict(fake_A)
-score_fake_B = D_B.predict(fake_B)
-#%%
-mse_loss_unet = np.mean(np.square(unet_pred - b_unet))
-#%%
-mse_loss_cycle = np.mean(np.square(fake_B - b))
-#G_A2B_model = load_model('/Users/didichi/Documents/DeepLearningMedicalImaging/models/saved_models/20190519-012230/G_A2B_model_weights_epoch_100.hdf5')
