@@ -51,7 +51,8 @@ class DataLoader():
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
         #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('/Volumes/Samsung_T5/p2m_datasets/p2m8/val/*')
+        path = glob('datasets/p2m8/test/*')
+        #path = glob('/Volumes/Samsung_T5/p2m_datasets/p2m8/val/*')
         batch_images = np.random.choice(path, size = batch_size)
         imgs_A = []
         imgs_B = []

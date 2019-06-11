@@ -761,105 +761,6 @@ class CycleGAN():
 
         #toimage(image, cmin=0, cmax=1).save(path_name)
         Image.fromarray(image).save(path_name)
-    '''
-    def saveImages(self, epoch, real_image_A, real_image_B, num_saved_images=1):
-        directory = os.path.join('images', self.date_time)
-        if not os.path.exists(os.path.join(directory, 'A')):
-            os.makedirs(os.path.join(directory, 'A'))
-            os.makedirs(os.path.join(directory, 'B'))
-            os.makedirs(os.path.join(directory, 'Atest'))
-            os.makedirs(os.path.join(directory, 'Btest'))
-
-        testString = ''
-
-        real_image_Ab = None
-        real_image_Ba = None
-        for i in range(num_saved_images + 1):
-            if i == num_saved_images:
-                A_test, B_test = self.data_loader.load_data(batch_size= 1, is_testing=True)
-                real_image_A = A_test
-                real_image_B = B_test
-                #real_image_A = np.expand_dims(real_image_A, axis=0)
-                #real_image_B = np.expand_dims(real_image_B, axis=0)
-                testString = 'test'
-                if self.channels == 1:  # Use the paired data for MR images
-                    real_image_Ab = B_test
-                    real_image_Ba = A_test
-                    #real_image_Ab = np.expand_dims(real_image_Ab, axis=0)
-                    #real_image_Ba = np.expand_dims(real_image_Ba, axis=0)
-            else:
-                #real_image_A = self.A_train[rand_A_idx[i]]
-                #real_image_B = self.B_train[rand_B_idx[i]]
-                if len(real_image_A.shape) < 4:
-                    real_image_A = np.expand_dims(real_image_A, axis=0)
-                    real_image_B = np.expand_dims(real_image_B, axis=0)
-                if self.channels == 1:  # Use the paired data for MR images
-                    real_image_Ab = real_image_B  # self.B_train[rand_A_idx[i]]
-                    real_image_Ba = real_image_A  # self.A_train[rand_B_idx[i]]
-                    real_image_Ab = np.expand_dims(real_image_Ab, axis=0)
-                    real_image_Ba = np.expand_dims(real_image_Ba, axis=0)
-
-            synthetic_image_B = self.G_A2B.predict(real_image_A)
-            synthetic_image_A = self.G_B2A.predict(real_image_B)
-            reconstructed_image_A = np.squeeze(self.G_B2A.predict(synthetic_image_B))
-            reconstructed_image_B = np.squeeze(self.G_A2B.predict(synthetic_image_A))
-            synthetic_image_A = np.squeeze(synthetic_image_A)
-            synthetic_image_B = np.squeeze(synthetic_image_B)
-            real_image_A = np.squeeze(real_image_A)
-            real_image_B = np.squeeze(real_image_B)
-            #gen_imgs_A = np.concatenate([real_image_A, synthetic_image_B, reconstructed_image_A])
-            #gen_imgs_B = np.concatenate([real_image_B, synthetic_image_A, reconstructed_image_B])
-            #gen_imgs_A = 0.5 * gen_imgs_A + 0.5
-            #gen_imgs_B = 0.5 * gen_imgs_B + 0.5
-            synthetic_image_A = 0.5 * synthetic_image_A + 0.5
-            reconstructed_image_A = 0.5 * synthetic_image_A + 0.5
-            synthetic_image_B = 0.5 * synthetic_image_B + 0.5
-            reconstructed_image_B = 0.5 * reconstructed_image_B + 0.5
-            titles = ['Original', 'Translated', 'Reconstructed']
-            r, c = 1, 3
-            fig, axs = plt.subplots(r,c)
-            cnt = 0
-            #for i in range(r):
-            axs[0].imshow(real_image_A, cmap = 'gray')
-            axs[0].set_title('Original')
-            axs[0].axis('off')
-            axs[1].imshow(synthetic_image_B, cmap = 'gray')
-            axs[1].set_title('Translated')
-            axs[1].axis('off')
-            axs[2].imshow(reconstructed_image_A, cmap = 'gray')
-            axs[2].set_title('Reconstructed')
-            axs[2].axis('off')
-            # for j in range(c):
-            #     print(gen_imgs_A[cnt].shape)
-            #     axs[j].imshow(gen_imgs_A[cnt])
-            #     axs[j].set_title(titles[j])
-            #     axs[j].axis('off')
-            #     cnt += 1
-            fig.savefig('images/{}/{}/epoch{}_sample{}.png'.format(self.date_time, 'A' + testString, epoch, i))
-            plt.close()
-            cnt = 0
-            fig, axs = plt.subplots(r,c)
-            axs[0].imshow(real_image_B, cmap = 'gray')
-            axs[0].set_title('Original')
-            axs[0].axis('off')
-            axs[1].imshow(synthetic_image_A, cmap = 'gray')
-            axs[1].set_title('Translated')
-            axs[1].axis('off')
-            axs[2].imshow(reconstructed_image_B, cmap = 'gray')
-            axs[2].set_title('Reconstructed')
-            axs[2].axis('off')
-            #for i in range(r):
-            # for j in range(c):
-            #     axs[j].imshow(gen_imgs_B[cnt])
-            #     axs[j].set_title(titles[j])
-            #     axs[j].axis('off')
-            #     cnt += 1
-            fig.savefig('images/{}/{}/epoch{}_sample{}.png'.format(self.date_time, 'B' + testString, epoch, i))
-            plt.close()
-            #self.truncateAndSave(real_image_Ab, real_image_A, synthetic_image_B, reconstructed_image_A,'images/{}/{}/epoch{}_sample{}.png'.format(self.date_time, 'A' + testString, epoch, i))
-            #self.truncateAndSave(real_image_Ba, real_image_B, synthetic_image_A, reconstructed_image_B,'images/{}/{}/epoch{}_sample{}.png'.format(self.date_time, 'B' + testString, epoch, i))
-        '''
-#===============================================================================
 # Save and load
 
     def saveModel(self, model, epoch):
@@ -933,7 +834,7 @@ class ImagePool():
 #%%
 if __name__ == '__main__':
     GAN = CycleGAN()
-    GAN.train(epochs = 200, batch_size=1, save_interval=1)
+    GAN.train(epochs = 100, batch_size=1, save_interval=1)
 
 #%%
 #GAN = CycleGAN()
