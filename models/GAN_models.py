@@ -1,28 +1,39 @@
 #%%
-from keras.layers import ZeroPadding2D, BatchNormalization, Input, MaxPooling2D, AveragePooling2D, Conv2D, LeakyReLU, Flatten, Conv2DTranspose, Activation, add, Lambda, GaussianNoise, merge, concatenate, Dropout, InputSpec, Layer
-from keras import initializers, regularizers, constraints
+import tensorflow as tf 
+import keras
 from keras import backend as K 
-from keras.models import Model, load_model
+from keras import initializers, regularizers, constraints
+from keras.layers import Layer, InputSpec, Input, Conv2D, Activation, add, BatchNormalization, UpSampling2D, ZeroPadding2D, Conv2DTranspose, MaxPooling2D, AveragePooling2D, Lambda, GaussianNoise, merge, concatenate, Dropout
+from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.core import Dense, Flatten, Reshape
-from keras.optimizers import Adam, adam 
+from keras.optimizers import Adam, adam
+from keras.models import Model, load_model 
 from keras.activations import tanh 
 from keras.regularizers import l2 
 from keras.initializers import RandomNormal 
+from keras.backend import mean 
+from keras.utils import plot_model, Sequence
+if keras.__version__ >= '2.2.4':
+    from keras.engine.topology import Network
+else:
+    from keras.engine.topology import Container
+#%%
+import numpy as np 
+import random 
+import datetime  
+import time  
+import json 
+import math 
+import sys 
+import csv  
+import os 
+from glob import glob 
+from time import localtime, strftime
+
+#%%
 import nibabel as nib 
 from PIL import Image 
-#from tensorflow.contrib.kfac.python.ops import optimizer
 from collections import OrderedDict 
-from time import localtime, strftime 
-#from scipy.misc import imsave, toimage 
-import numpy as np 
-import json 
-import sys 
-import time 
-import datetime 
-from glob import glob
-import os
-#%%
-import matplotlib.pyplot as plt
 #%%
 class InstanceNormalization(Layer):
     """Instance normalization layer.
@@ -166,9 +177,81 @@ class InstanceNormalization(Layer):
         }
         base_config = super(InstanceNormalization, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+#%%
+class ReflectionPadding2D(Layer):
+    def __init__(self, padding=(1, 1), **kwargs):
+        self.padding = tuple(padding)
+        self.input_spec = [InputSpec(ndim=4)]
+        super(ReflectionPadding2D, self).__init__(**kwargs)
 
-#%% 
-class unit():
+    def compute_output_shape(self, s):
+        return (s[0], s[1] + 2 * self.padding[0], s[2] + 2 * self.padding[1], s[3])
+
+    def call(self, x, mask=None):
+        w_pad, h_pad = self.padding
+        return tf.pad(x, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]], 'REFLECT')
+#%%
+class DataLoader():
+    def __init__(self, dataset_name, img_res = (256,256)):
+        self.img_res = img_res
+        self.dataset_name = dataset_name
+    def load_data(self, batch_size = 1, is_testing = False):
+        data_type = 'train' if not is_testing else 'test' 
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
+        batch_images = np.random.choice(path, size = batch_size)
+        imgs_A = []
+        imgs_B = []
+        for img_path in batch_images:
+            img = nib.load(img_path)
+            img = img.get_data()
+            _,_,w = img.shape 
+            _w = int(w/2)
+            # img_B is petra and img_A is mp2
+            img_B, img_A = img[:,:,:_w], img[:,:,_w:]
+            m_A = np.max(img_A)
+            mi_A = np.min(img_A)
+            img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+            m_B = np.max(img_B)
+            mi_B = np.min(img_B)
+            img_B = 2* (img_B - mi_B)/(m_B - mi_B) -1 
+            imgs_A.append(img_A)
+            imgs_B.append(img_B)
+        imgs_A = np.asarray(imgs_A, dtype=float)
+        imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
+        imgs_B = np.asarray(imgs_B, dtype = float)
+        imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1],imgs_B.shape[2],1))
+        return imgs_A, imgs_B
+    def load_batch(self, batch_size = 1, is_testing = False):
+        data_type = "train" if not is_testing else "test"
+        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
+        self.n_batches = int(len(path)/batch_size)
+        for i in range(self.n_batches - 1):
+            batch = path[i*batch_size:(i+1)*batch_size]
+            imgs_A, imgs_B = [], []
+            for img in batch:
+                img = nib.load(img)
+                img = img.get_data()
+                _,_,w = img.shape
+                _w = int(w/2)
+                img_B, img_A = img[:,:,:_w], img[:,:,_w:]
+                #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
+                img_A = np.squeeze(img_A)
+                img_B = np.squeeze(img_B)
+                m_A = np.max(img_A)
+                mi_A = np.min(img_A)
+                img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
+                m_B = np.max(img_B)
+                mi_B = np.min(img_B)
+                img_B = 2* (img_B - mi_B)/(m_B - mi_B) - 1
+                imgs_A.append(img_A)
+                imgs_B.append(img_B)
+            imgs_A = np.asarray(imgs_A, dtype=float)
+            imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
+            imgs_B = np.asarray(imgs_B, dtype = float)
+            imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1], imgs_B.shape[2],1))
+            yield imgs_A, imgs_B
+#%%
+class UNIT():
     def __init__(self, lr = 1e-4, img_res = (256,256)):
         self.channels = 1
         self.img_shape = (img_res[0], img_res[1], self.channels)
@@ -182,7 +265,7 @@ class unit():
         self.lambda_2 = 100
         self.lambda_3 = self.lambda_1 
         self.lambda_4 = self.lambda_2 
-        self.dataloader = DataLoader(dataset_name = 'p2m4', img_res = (256,256))
+        self.dataloader = DataLoader(dataset_name = 'p2m7', img_res = (256,256))
         opt = Adam(self.learning_rate, self.beta_1, self.beta_2)
         self.date_time = strftime("%Y%m%d-%H%M%S", localtime()) 
         # Discriminator
@@ -393,138 +476,207 @@ class unit():
         z = Activation("tanh")(x)
 
         return Model(inputs=inputImg, outputs=z, name=name)
-#%%   
-class DataLoader():
-    def __init__(self, dataset_name, img_res = (256,256)):
-        self.img_res = img_res
-        self.dataset_name = dataset_name
-    def load_entire_batch(self):
-        path = glob('datasets/p2m4/val/*')
-        rndperm = np.random.permutation(len(path))
-        print(len(path))
-        imgs_A = []
-        imgs_B = []
-        imgs_A_label = []
-        imgs_B_label = []
-        for i in range(len(path)):
-            fname = path[rndperm[i]]
-            img = nib.load(fname)
-            img = img.get_data()
-            _,_,w = img.shape
-            _w = int(w/2)
-            img_A, img_B = img[:,:,:_w], img[:,:,_w:]
-            img_A = np.squeeze(img_A)
-            img_B = np.squeeze(img_B)
-            m_A = np.max(img_A)
-            mi_A = np.min(img_A)
-            img_A = (img_A - mi_A)/(m_A - mi_A) 
-            m_B = np.max(img_B)
-            mi_B = np.min(img_B)
-            img_B = (img_B - mi_B)/(m_B - mi_B)
-            imgs_A.append(img_A)
-            imgs_A_label.append(1)
-            imgs_B.append(img_B)
-            imgs_B_label.append(0)
-        imgs_A = np.array(imgs_A)
-        imgs_B = np.array(imgs_B)
-        imgs_A_label = np.array(imgs_A_label)
-        imgs_B_label = np.array(imgs_B_label)
-        return imgs_A, imgs_B, imgs_A_label, imgs_B_label
-    def load_data(self, batch_size = 1, is_testing = False, is_jitter = False):
-        def randomCrop(img , mask, width, height):
-            assert img.shape[0] >= height
-            assert img.shape[1] >= width
-            assert img.shape[0] == mask.shape[0]
-            assert img.shape[1] == mask.shape[1]
-            x = np.random.randint(0, img.shape[1] - width)
-            y = np.random.randint(0, img.shape[0] - height)
-            img = img[y:y+height, x:x+width]
-            mask = mask[y:y+height, x:x+width]
-            return img, mask
-        data_type = "train" if not is_testing else "val"
-        #path = glob('/home/student.unimelb.edu.au/chid/Documents/MRI_data/MRI_data/Daris/%s/%s/*' %(self.dataset_name,data_type))
-        #path = glob('/home/chid/p2m/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        #path = glob('/Users/chid/.keras/datasets/%s/%s/*' % (self.dataset_name, data_type))
-        path = glob('datasets/%s/%s/*' % (self.dataset_name, data_type))
-        batch_images = np.random.choice(path, size = batch_size)
-        imgs_A = []
-        imgs_B = []
-        for img_path in batch_images:
-            img = nib.load(img_path)
-            img = img.get_data()
-            _,_,w = img.shape
-            _w = int(w/2)
-            img_A, img_B = img[:,:,:_w], img[:,:,_w:]
-            #img_A, img_B = img[:,:,_w:],img[:,:,:_w]
-            img_A = np.squeeze(img_A)
-            img_B = np.squeeze(img_B)
-            #img_A = Image.fromarray(img_A, mode = 'F')
-            #img_B = Image.fromarray(img_B, mode = 'F')
-            #img_A = img_A.resize(size = (self.img_res[0], self.img_res[1]))
-            #img_B = img_B.resize(size = (self.img_res[0], self.img_res[1]))
-            #img_A = img_A.resize( (self.img_res[0],self.img_res[1]))
-            #img_B = resize(img_B, (self.img_res[0],self.img_res[1]))
-            if not is_testing and np.random.random() <0.5 and is_jitter:
-                # 1. Resize an image to bigger height and width
-                img_A = Image.fromarray(img_A, mode = 'F')
-                img_B = Image.fromarray(img_B, mode = 'F')
-                img_A = img_A.resize(shape = (img_A.shape[0] + 64, img_A.shape[1] + 64))
-                img_B = img_B.resize(shape = (img_B.shape[0] + 64, img_B.shape[1] + 64))
-                img_A = np.array(img_A)
-                img_B = np.array(img_B)
-                # 2. Randomly crop the image
-                img_A, img_B = randomCrop(img_A, img_B, self.img_res[0], self.img_res[1])
-                # 3. Randomly flip the image horizontally
-                img_A = np.fliplr(img_A)
-                img_B = np.fliplr(img_B)
-            m_A = np.max(img_A)
-            mi_A = np.min(img_A)
-            img_A = 2* (img_A - mi_A)/(m_A - mi_A) - 1
-            m_B = np.max(img_B)
-            mi_B = np.min(img_B)
-            img_B = 2* (img_B - mi_B)/(m_B - mi_B) -1 
-            imgs_A.append(img_A)
-            imgs_B.append(img_B)
-        imgs_A = np.asarray(imgs_A, dtype=float)
-        imgs_A = np.reshape(imgs_A, (-1,imgs_A.shape[1], imgs_A.shape[2],1))
-        imgs_B = np.asarray(imgs_B, dtype = float)
-        imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1],imgs_B.shape[2],1))
-        return imgs_A, imgs_B
 
-#%%
-GAN = unit()
-#%%
-encoderA = GAN.encoderA
-encoderB = GAN.encoderB
-encoderShared = GAN.encoderShared
-decoderShared = GAN.decoderShared
-generatorA = GAN.generatorA
-generatorB = GAN.generatorB
-#%%
-encoderA.load_weights('models/saved_models/20190603-232225/encoderA_epoch_100_weights.hdf5')
-encoderB.load_weights('models/saved_models/20190603-232225/encoderB_epoch_100_weights.hdf5')
-encoderShared.load_weights('models/saved_models/20190603-232225/encoderShared_epoch_100_weights.hdf5')
-decoderShared.load_weights('models/saved_models/20190603-232225/decoderShared_epoch_100_weights.hdf5')
-generatorA.load_weights('models/saved_models/20190603-232225/generatorA_epoch_100_weights.hdf5')
-generatorB.load_weights('models/saved_models/20190603-232225/generatorB_epoch_100_weights.hdf5')
-#%%
-dataloader = DataLoader(dataset_name = 'p2m4')
-a,b = dataloader.load_data(1, is_testing= True)
-plt.imshow(np.squeeze(a))
-# a is petra # b is mp2rage
-#%%
-encodedB = encoderB.predict(a)
-encodedShared = encoderShared.predict(encodedB)
-decodedShared = decoderShared.predict(encodedShared)
-fake_B = generatorA.predict(decodedShared)
-#%%
-plt.imshow(np.squeeze(fake_B))
-#%%
-plt.imshow(np.squeeze(b))
-#%%
-u_net_model = load_model('models/u-net-p2m_l2_2.h5')
-#%%
-a_unet = (a + 1)/2.0
-u_net_pred = u_net_model.predict(a_unet)
-#%%
-plt.imshow(np.squeeze(u_net_pred))
+    def evaluate(self, paths,batch_size = 1):
+        if (len(paths) < 6):
+            print("Not enough model weights")
+        self.encoderA.load_weights(paths[0])
+        self.encoderB.load_weights(paths[1])
+        self.encoderShared.load_weights(paths[2])
+        self.decoderShared.load_weights(paths[3])
+        self.generatorA.load_weights(paths[4])
+        self.generatorB.load_weights(paths[5])
+        label_shape1 = (batch_size,) + self.discriminatorA.output_shape[0][1:]
+        label_shape2 = (batch_size,) + self.discriminatorA.output_shape[1][1:]
+        label_shape3 = (batch_size,) + self.discriminatorA.output_shape[2][1:]
+        real_labels1 = np.ones(label_shape1)
+        real_labels2 = np.ones(label_shape2)
+        real_labels3 = np.ones(label_shape3)
+        synthetic_labels1 = np.zeros(label_shape1)
+        synthetic_labels2 = np.zeros(label_shape2)
+        synthetic_labels3 = np.zeros(label_shape3)
+        dummy = np.zeros(shape = ((batch_size,) + self.latent_dim))
+        real_labels = [real_labels1, real_labels2, real_labels3]
+        synthetic_labels = [synthetic_labels1, synthetic_labels2, synthetic_labels3]
+        #inputs = []
+        ground_truth = []
+        outputs = []
+        for batch_i, (mp2_outputs, petra_inputs) in enumerate(self.dataloader.load_batch(batch_size= 1, is_testing=True)):
+            #inputs.append(np.squeeze(petra_inputs))
+            encodedImageB = self.encoderB.predict(petra_inputs)
+            encodedImageA = self.encoderA.predict(mp2_outputs)
+            sharedA = self.encoderShared.predict(encodedImageA)
+            sharedB = self.encoderShared.predict(encodedImageB)
+            outSharedA = self.decoderShared.predict(sharedA)
+            outSharedB = self.decoderShared.predict(sharedB)
+            outAa = self.generatorA.predict(outSharedA)
+            outBa = self.generatorA.predict(outSharedB) # what we want
+            outAb = self.generatorB.predict(outSharedA)
+            outBb = self.generatorB.predict(outSharedB)
+            outputs.append(np.squeeze(outBa))
+            ground_truth.append(np.squeeze(mp2_outputs))
+
+            #dA_loss_real = self.discriminatorA.evaluate(mp2_outputs, real_labels)
+            #dA_loss_fake = self.discriminatorA.evaluate(outBa, synthetic_labels)
+            #dA_loss = np.add(dA_loss_real, dA_loss_fake)
+            #dB_loss_real = self.discriminatorB.evaluate(petra_inputs, real_labels)
+            #dB_loss_fake = self.discriminatorB.evaluate(outAb, synthetic_labels)
+            #dB_loss = np.add(dB_loss_fake, dB_loss_real)
+            #g_loss = self.encoderGeneratorModel.evaluate([mp2_outputs, petra_inputs], [dummy, dummy,dummy, dummy, mp2_outputs, petra_inputs, mp2_outputs, petra_inputs, real_labels1, real_labels1,real_labels2, real_labels2, real_labels3, real_labels3])
+            print('batch ', batch_i)
+            #print('DA_loss:', dA_loss)
+            #print('DB_loss:', dB_loss)
+            #print('g_loss:', g_loss)
+        return ground_truth, outputs
+    def train(self, epochs = 100, batch_size = 1, save_interval = 1):
+        def run_training_iteration(loop_index, imgA, imgB):
+            encodedImageA = self.encoderA.predict(imgA)
+            encodedImageB = self.encoderB.predict(imgB)
+
+            sharedA = self.encoderShared.predict(encodedImageA)
+            sharedB = self.encoderShared.predict(encodedImageB)
+
+            outSharedA = self.decoderShared.predict(sharedA)
+            outSharedB = self.decoderShared.predict(sharedB)
+
+            outAa = self.generatorA.predict(outSharedA)
+            outBa = self.generatorA.predict(outSharedB)
+
+            outAb = self.generatorB.predict(outSharedA)
+            outBb = self.generatorB.predict(outSharedB)
+            # Train discriminator
+            dA_loss_real = self.discriminatorA.train_on_batch(imgA, real_labels)
+            dA_loss_fake = self.discriminatorA.train_on_batch(outBa, synthetic_labels)
+            dA_loss = np.add(dA_loss_real, dA_loss_fake)
+
+            dB_loss_real = self.discriminatorB.train_on_batch(imgB, real_labels)
+            dB_loss_fake = self.discriminatorB.train_on_batch(outAb, synthetic_labels)
+            dB_loss = np.add(dB_loss_real, dB_loss_fake)
+            # Train generator
+            g_loss = self.encoderGeneratorModel.train_on_batch([imgA, imgB],
+                                                  [dummy, dummy,
+                                                   dummy, dummy,
+                                                   imgA, imgB,
+                                                   imgA, imgB,
+                                                   real_labels1, real_labels1,
+                                                   real_labels2, real_labels2,
+                                                   real_labels3, real_labels3])
+            print('----------------Epoch-------640x480---------', epoch, '/', epochs - 1)
+            #print('----------------Loop index-----------', loop_index, '/', epoch_iterations - 1)
+            print('Discriminator TOTAL loss: ', dA_loss[0] + dB_loss[0])
+            print('Discriminator A loss total: ', dA_loss[0])
+            print('Discriminator B loss total: ', dB_loss[0])
+            print('Genarator loss total: ', g_loss[0])
+            print('----------------Discriminator loss----')
+            print('dA_loss_real: ', dA_loss_real[0])
+            print('dA_loss_fake: ', dA_loss_fake[0])
+            print('dB_loss_real: ', dB_loss_real[0])
+            print('dB_loss_fake: ', dB_loss_fake[0])
+            print('----------------Generator loss--------')
+            print('Shared A: ', g_loss[1])
+            print('Shared B: ', g_loss[2])
+            print('Cycle shared A: ', g_loss[3])
+            print('Cycle shared B: ', g_loss[4])
+            print('OutAa MAE: ', g_loss[5])
+            print('OutBb MAE: ', g_loss[6])
+            print('Cycle_Ab_Ba MAE: ', g_loss[7])
+            print('Cycle_Ba_Ab MAE: ', g_loss[8])
+            print('guess_outBa: ', g_loss[9])
+            print('guess_outAb: ', g_loss[10])
+            print('guess_outBa: ', g_loss[11])
+            print('guess_outAb: ', g_loss[12])
+            print('guess_outBa: ', g_loss[13])
+            print('guess_outAb: ', g_loss[14])
+            D_loss.append(dA_loss[0] + dB_loss[0])
+            DA_loss.append(dA_loss[0])
+            DB_loss.append(dB_loss[0])
+            G_loss.append(g_loss[0])
+            sA_loss.append(g_loss[1])
+            sB_loss.append(g_loss[2])
+            csA_loss.append(g_loss[3])
+            csB_loss.append(g_loss[4])
+            out_Aa_mae.append(g_loss[5])
+            out_Bb_mae.append(g_loss[6])
+            c_Ab_Ba_mae.append(g_loss[7])
+            c_Ba_Ab_mae.append(g_loss[8])
+            guess_outBa.append(g_loss[9])
+            guess_outAb.append(g_loss[10])
+            dA_loss_r.append(dA_loss_real[0])
+            dB_loss_r.append(dB_loss_real[0])
+            dA_loss_f.append(dA_loss_fake[0])
+            dB_loss_f.append(dB_loss_fake[0])
+        #A_train = self.A_train 
+        #B_train = self.B_train 
+        self.epochs = epochs 
+        self.batch_size = batch_size 
+        D_loss = []
+        DA_loss = []
+        DB_loss = []
+        G_loss = []
+        sA_loss = []
+        sB_loss = []
+        csA_loss = []
+        csB_loss = []
+        out_Aa_mae = []
+        out_Bb_mae = []
+        c_Ab_Ba_mae = []
+        c_Ba_Ab_mae = []
+        dA_loss_f = []
+        dB_loss_f = []
+        dA_loss_r = []
+        dB_loss_r = []
+        guess_outBa = []
+        guess_outAb = []
+        dummy = np.zeros(shape = ((self.batch_size,) + self.latent_dim))
+        label_shape1 = (batch_size,) + self.discriminatorA.output_shape[0][1:]
+        label_shape2 = (batch_size,) + self.discriminatorA.output_shape[1][1:]
+        label_shape3 = (batch_size,) + self.discriminatorA.output_shape[2][1:]
+
+        real_labels1 = np.ones(label_shape1)
+        real_labels2 = np.ones(label_shape2)
+        real_labels3 = np.ones(label_shape3)
+        synthetic_labels1 = np.zeros(label_shape1)
+        synthetic_labels2 = np.zeros(label_shape2)
+        synthetic_labels3 = np.zeros(label_shape3)
+
+        real_labels = [real_labels1, real_labels2, real_labels3]
+        synthetic_labels = [synthetic_labels1, synthetic_labels2, synthetic_labels3]
+        for epoch in range(epochs):
+            for batch_i, (real_images_A, real_images_B) in enumerate(self.dataloader.load_batch(batch_size = 1)):
+                run_training_iteration(batch_i, real_images_A, real_images_B)
+        self.saveModel(self.discriminatorA, 'discriminatorA', epochs)
+        self.saveModel(self.discriminatorB, 'discriminatorB', epochs)
+        self.saveModel(self.generatorA, 'generatorA', epochs)
+        self.saveModel(self.generatorB, 'generatorB', epochs)
+        self.saveModel(self.encoderA, 'encoderA', epochs)
+        self.saveModel(self.encoderB, 'encoderB', epochs)
+        self.saveModel(self.decoderShared, 'decoderShared', epochs)
+        self.saveModel(self.encoderShared, 'encoderShared', epochs)
+        np.savetxt('saved_model/{}/D_loss.txt'.format(self.date_time), D_loss)
+        np.savetxt('saved_model/{}/DA_loss.txt'.format(self.date_time), DA_loss)
+        np.savetxt('saved_model/{}/DB_loss.txt'.format(self.date_time), DB_loss)
+        np.savetxt('saved_model/{}/G_loss.txt'.format(self.date_time), G_loss)
+        np.savetxt('saved_model/{}/sA_loss.txt'.format(self.date_time), sA_loss)
+        np.savetxt('saved_model/{}/sB_loss.txt'.format(self.date_time), sB_loss)
+        np.savetxt('saved_model/{}/csA_loss.txt'.format(self.date_time), csA_loss)
+        np.savetxt('saved_model/{}/csB_loss.txt'.format(self.date_time), csB_loss)
+        np.savetxt('saved_model/{}/out_Aa_mae.txt'.format(self.date_time), out_Aa_mae)
+        np.savetxt('saved_model/{}/out_Bb_mae.txt'.format(self.date_time), out_Bb_mae)
+        np.savetxt('saved_model/{}/c_Ab_Ba_mae.txt'.format(self.date_time), c_Ab_Ba_mae)
+        np.savetxt('saved_model/{}/c_Ba_Ab_mae.txt'.format(self.date_time), c_Ba_Ab_mae)
+        np.savetxt('saved_model/{}/dA_loss_f.txt'.format(self.date_time), dA_loss_f)
+        np.savetxt('saved_model/{}/dB_loss_f.txt'.format(self.date_time), dB_loss_f)
+        np.savetxt('saved_model/{}/dA_loss_r.txt'.format(self.date_time), dA_loss_r)
+        np.savetxt('saved_model/{}/dB_loss_r.txt'.format(self.date_time), dB_loss_r)
+        np.savetxt('saved_model/{}/guess_outBa.txt'.format(self.date_time), guess_outBa)
+        np.savetxt('saved_model/{}/guess_outAb.txt'.format(self.date_time), guess_outAb)
+    def saveModel(self, model, model_name, epoch):
+        directory = os.path.join('saved_model', self.date_time)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        model_path_w = 'saved_model/{}/{}_epoch_{}_weights.hdf5'.format(self.date_time, model_name, epoch)
+        model.save_weights(model_path_w)
+        model_path_m = 'saved_model/{}/{}_epoch_{}_model.json'.format(self.date_time, model_name, epoch)
+        model.save_weights(model_path_m)
+

@@ -48,11 +48,11 @@ def load_batch(path, batch_size, num_images):
         imgs, imgs_f = [], []
         for img in batch:
             img = read_image(img, img_size = 64)
-            img = img - np.mean(img)
-            #img = (img - np.min(img))/(np.max(img) - np.min(img))
+            #img = img - np.mean(img)
+            img = (img - np.min(img))/(np.max(img) - np.min(img))
             img_f = to_freq_space_2d(img)
             #img_f = img_f - np.mean(img_f)
-            #img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
+            img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
             imgs.append(img)
             imgs_f.append(img_f)
         imgs = np.asarray(imgs, dtype = float)

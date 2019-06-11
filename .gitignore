@@ -7,3 +7,7 @@ models/u-net-p2m_l2_2.h5
 imagenet/*
 *.hdf5
 *.json
+cycle_fake_mp2rages.npy
+*.npy
+*.png
+*.txt

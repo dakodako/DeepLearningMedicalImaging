@@ -554,7 +554,7 @@ class DataLoader():
         self.img_res = img_res
         self.dataset_name = dataset_name
     def load_entire_batch(self):
-        path = glob('datasets/p2m4/val/*')
+        path = glob('/Volumes/Samsung_T5/p2m_datasets/p2m7/test/*')
         rndperm = np.random.permutation(len(path))
         print(len(path))
         imgs_A = []
@@ -646,7 +646,7 @@ class DataLoader():
         imgs_B = np.reshape(imgs_B, (-1,imgs_B.shape[1],imgs_B.shape[2],1))
         return imgs_A, imgs_B
 #%%   
-dataloader = DataLoader(dataset_name = 'p2m4')
+dataloader = DataLoader(dataset_name = 'p2m8')
 b, a, b_label, a_label = dataloader.load_entire_batch()
 #%%
 print(a.shape)
@@ -668,12 +668,12 @@ decoderShared = UNIT_gan.decoderShared
 generatorA = UNIT_gan.generatorA
 generatorB = UNIT_gan.generatorB
 #%%
-encoderA.load_weights('models/saved_models/20190526-175240/encoderA_epoch_100_weights.hdf5')
-encoderB.load_weights('models/saved_models/20190526-175240/encoderB_epoch_100_weights.hdf5')
-encoderShared.load_weights('models/saved_models/20190526-175240/encoderShared_epoch_100_weights.hdf5')
-decoderShared.load_weights('models/saved_models/20190526-175240/decoderShared_epoch_100_weights.hdf5')
-generatorA.load_weights('models/saved_models/20190526-175240/generatorA_epoch_100_weights.hdf5')
-generatorB.load_weights('models/saved_models/20190526-175240/generatorB_epoch_100_weights.hdf5')
+encoderA.load_weights('models/saved_models/20190603-232225/encoderA_epoch_100_weights.hdf5')
+encoderB.load_weights('models/saved_models/20190603-232225/encoderB_epoch_100_weights.hdf5')
+encoderShared.load_weights('models/saved_models/20190603-232225/encoderShared_epoch_100_weights.hdf5')
+decoderShared.load_weights('models/saved_models/20190603-232225/decoderShared_epoch_100_weights.hdf5')
+generatorA.load_weights('models/saved_models/20190603-232225/generatorA_epoch_100_weights.hdf5')
+generatorB.load_weights('models/saved_models/20190603-232225/generatorB_epoch_100_weights.hdf5')
 #%%
 fake_As_unit = []
 fake_As_label = []

@@ -47,11 +47,11 @@ def load_batch(path, batch_size, num_images):
         imgs, imgs_f = [], []
         for img in batch:
             img = read_image(img, img_size = 64)
-            img = img - np.mean(img)
-            #img = (img - np.min(img))/(np.max(img) - np.min(img))
+            #img = img - np.mean(img)
+            img = (img - np.min(img))/(np.max(img) - np.min(img))
             img_f = to_freq_space_2d(img)
             #img_f = img_f - np.mean(img_f)
-            #img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
+            img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
             imgs.append(img)
             imgs_f.append(img_f)
         imgs = np.asarray(imgs, dtype = float)
@@ -165,7 +165,7 @@ automap.compile(loss='mean_squared_error', optimizer = optimizer)
 
 automap.summary()
 #%%
-automap.load_weights('automap/saved_model/20190603-113141/automap_epoch_100_weights.hdf5')
+automap.load_weights('automap/saved_model/20190604-221904/automap_epoch_100_weights.hdf5')
 #%%
 path = glob('imagenet/*')
 results = []
@@ -179,13 +179,28 @@ for batch_i, (imgs, imgs_f) in enumerate(load_batch(path, batch_size = 1,  num_i
     results.append(result)
     inputs.append(imgs)
     
-
-
+#%%
+#print(np.min(results[0,:,:]))
 #%%
 results = np.array(results)
 print(results.shape)
 inputs = np.array(inputs)
 print(inputs.shape)
+#%%
+fig, axs = plt.subplots(2,14, figsize=(40,5))
+print(axs.shape)
+for row in range(2):
+    for col in range(14):
+        if row == 0:
+            axs[row, col].imshow(inputs[col , :, :], cmap = 'gray')
+        if row == 1:
+            axs[row, col].imshow(results[col , :, :], cmap = 'gray')
+    
+        
+plt.savefig('automap_results3.png')
+
+#%%
+
 #%%
 plt.imshow(results[17,:,:], cmap = 'gray')
 
