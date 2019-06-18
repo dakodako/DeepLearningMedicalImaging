@@ -12,7 +12,6 @@ from keras import backend as K
 from glob import glob
 from PIL import Image
 import datetime
-import pandas as pd
 from time import localtime, strftime 
 import random 
 from random import sample
@@ -31,6 +30,7 @@ def load_batch(path, batch_size):
             #img = img - np.mean(img)
             img = (img - np.min(img))/(np.max(img) - np.min(img))
             img_f = to_freq_space_2d(img)
+            img_f = undersample(img_f)
             #img_f = img_f - np.mean(img_f)
             #img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
             imgs.append(img)
@@ -45,7 +45,7 @@ def read_image(path):
     img = np.load(path)
     return img
 def misalign_k_space(k_space):
-    rows, cols, chan = k_space.shape
+    rows, cols, _ = k_space.shape
     k_space_mis = np.zeros(shape = k_space.shape)
     for i in range(rows):
         if i % 2 == 0:
@@ -53,7 +53,18 @@ def misalign_k_space(k_space):
         else:
             k_space_mis[i,:,:] = k_space[i, :, :]
     return k_space_mis
-
+def undersample(img_f):
+    img_f_real = img_f[:,:,0]
+    img_f_imag = img_f[:,:,1]
+    img_f_real_flat = np.reshape(img_f_real, (np.product(img_f_real.shape),))
+    idx = sample(range(np.product(img_f_real.shape)), int(0.3*np.product(img_f_real.shape)))
+    img_f_real_flat[idx] = 0
+    img_f_real_down = np.reshape(img_f_real_flat, img_f_real.shape)
+    img_f_imag_flat = np.reshape(img_f_imag, (np.product(img_f_imag.shape),))
+    img_f_imag_flat[idx] = 0
+    img_f_imag_down = np.reshape(img_f_imag_flat, img_f_imag.shape)
+    img_f_down = np.dstack((img_f_real_down, img_f_imag_down))
+    return img_f_down
 def to_freq_space_2d(img):
     """ Performs FFT of an image
     :param img: input 2D image
@@ -154,46 +165,9 @@ for epoch in range(1,epochs + 1):
 
 #%%
 
-saveModel(automap, 'automap', epochs, date_time)
+saveModel(automap, 'automap_misalign', epochs, date_time)
 numpy_loss_history = np.array(history_loss)
 directory = os.path.join('saved_model', date_time)
 if not os.path.exists(directory):
     os.makedirs(directory)
 np.save('saved_model/{}/loss_history.npy'.format(date_time), numpy_loss_history)
-np.savetxt("saved_model/{}/loss_history.txt".format(date_time), numpy_loss_history, delimiter=",")
-#%%
-#path = glob('datasets/large/train/*')
-#max, min = search_max_min_batch(path = path, num_images = 28)
-#%%
-#imgs, imgs_f = read_images(path, n_imgs = 28, normalize = True)
-#plt.imshow(imgs[2,:,:], cmap = 'gray')
-#%%
-#img = Image.open(path[22]).convert('LA')
-#img = np.array(img)
-#plt.imshow(img[:,:,0], cmap = 'gray')
-#%%
-#print(max)
-
-#%%
-#print(min)
-#print(imgs[2,32,32])
-
-#%%
-#print(path)
-#%%
-#for batch_i, (imgs, imgs_f) in enumerate(load_batch(path, 2, num_images = 28)):
-    #print(imgs.shape)
-    #print(imgs_f.shape)
-#%%
-#print(np.max(imgs_f))
-#print(np.min(imgs_f))
-#%%
-#plt.imshow(np.squeeze(imgs[0,:,:,:]), cmap = 'gray')
-
-#%%
-#plt.imshow(np.reshape(imgs_f[0,:], (64,64, 2))[:,:,1], cmap = 'gray')
-#%%
-#img_f = to_freq_space_2d(np.squeeze(imgs[0,:,:,:]))
-#%%
-#plt.imshow(img_f[:,:,1], cmap = 'gray')
-

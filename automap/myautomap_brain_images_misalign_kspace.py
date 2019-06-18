@@ -12,7 +12,6 @@ from keras import backend as K
 from glob import glob
 from PIL import Image
 import datetime
-import pandas as pd
 from time import localtime, strftime 
 import random 
 from random import sample
@@ -31,6 +30,7 @@ def load_batch(path, batch_size):
             #img = img - np.mean(img)
             img = (img - np.min(img))/(np.max(img) - np.min(img))
             img_f = to_freq_space_2d(img)
+            img_f = misalign_k_space(img_f)
             #img_f = img_f - np.mean(img_f)
             #img_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
             imgs.append(img)
@@ -45,7 +45,7 @@ def read_image(path):
     img = np.load(path)
     return img
 def misalign_k_space(k_space):
-    rows, cols, chan = k_space.shape
+    rows, cols, _ = k_space.shape
     k_space_mis = np.zeros(shape = k_space.shape)
     for i in range(rows):
         if i % 2 == 0:
@@ -154,13 +154,12 @@ for epoch in range(1,epochs + 1):
 
 #%%
 
-saveModel(automap, 'automap', epochs, date_time)
+saveModel(automap, 'automap_misalign', epochs, date_time)
 numpy_loss_history = np.array(history_loss)
 directory = os.path.join('saved_model', date_time)
 if not os.path.exists(directory):
     os.makedirs(directory)
 np.save('saved_model/{}/loss_history.npy'.format(date_time), numpy_loss_history)
-np.savetxt("saved_model/{}/loss_history.txt".format(date_time), numpy_loss_history, delimiter=",")
 #%%
 #path = glob('datasets/large/train/*')
 #max, min = search_max_min_batch(path = path, num_images = 28)
