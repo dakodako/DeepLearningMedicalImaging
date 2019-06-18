@@ -722,7 +722,7 @@ class CycleGAN():
         self.epochs = 200 # choose multiples of 25 since the models are save each 25th epoch
         self.save_interval = 1
         self.synthetic_pool_size = 50
-        self.data_loader = DataLoader(dataset_name = 'p2m8', img_res = (256,256))
+        self.data_loader = DataLoader(dataset_name = 'p2m7', img_res = (256,256))
         # Linear decay of learning rate, for both discriminators and generators
         self.use_linear_decay = False
         self.decay_epoch = 101  # The epoch where the linear decay of the learning rates start
@@ -786,8 +786,12 @@ class CycleGAN():
                          loss_weights=loss_weights_D)
 
         # Use containers to avoid falsy keras error about weight descripancies
-        self.D_A_static = Container(inputs=image_A, outputs=guess_A, name='D_A_static_model')
-        self.D_B_static = Container(inputs=image_B, outputs=guess_B, name='D_B_static_model')
+        if keras.__version__ >= '2.2.4':
+            self.D_A_static = Network(inputs=image_A, outputs=guess_A, name='D_A_static_model')
+            self.D_B_static = Network(inputs=image_B, outputs=guess_B, name='D_B_static_model')
+        else:
+            self.D_A_static = Container(inputs=image_A, outputs=guess_A, name='D_A_static_model')
+            self.D_B_static = Container(inputs=image_B, outputs=guess_B, name='D_B_static_model')
 
         # ======= Generator model ==========
         # Do note update discriminator weights during generator training
@@ -953,7 +957,8 @@ class CycleGAN():
         x = Conv2D(self.channels, kernel_size=7, strides=1)(x)
         x = Activation('tanh')(x)  # They say they use Relu but really they do not
         return Model(inputs=input_img, outputs=x, name=name)
-    def evalutate(self, path, batch_size = 1):
+    def evaluate(self, path, batch_size = 1):
+        print('loading model weights')
         self.G_A2B.load_weights(path[0])
         self.G_B2A.load_weights(path[1])
         self.D_A.load_weights(path[2])
@@ -962,7 +967,9 @@ class CycleGAN():
         synthetic_pool_B = ImagePool(self.synthetic_pool_size)
         fakeAs = []
         fakeBs = []
-        for batch_i, (real_images_B, real_images_A) in enumerate(self.data_loader.load_batch(batch_size = 1, is_testing = True)):
+        print('start evaluating')
+        for batch_i, (real_images_A, real_images_B) in enumerate(self.data_loader.load_batch(batch_size = 1, is_testing = True)):
+            print('batch_i:', batch_i)
             label_shape = (batch_size,) + self.D_A.output_shape[1:]
             ones = np.ones(shape=label_shape) * self.REAL_LABEL
             zeros = ones * 0
@@ -1241,4 +1248,6 @@ class ImagePool():
                         return_images = np.vstack((return_images, image))
 
         return return_images
+
+#%%
 
