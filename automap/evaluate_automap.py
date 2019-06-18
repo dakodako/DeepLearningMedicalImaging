@@ -51,6 +51,7 @@ def load_batch(path, batch_size, num_images):
             #img = img - np.mean(img)
             img = (img - np.min(img))/(np.max(img) - np.min(img))
             img_f = to_freq_space_2d(img)
+            img_f = undersample(img_f)
             #img_f = misalign_k_space(img_f)
             #img_f = img_f - np.mean(img_f)
             #mg_f = (img_f - np.min(img_f))/(np.max(img_f) - np.min(img_f))
@@ -104,7 +105,18 @@ def misalign_k_space(k_space):
         else:
             k_space_mis[i,:,:] = k_space[i, :, :]
     return k_space_mis
-
+def undersample(img_f):
+    img_f_real = img_f[:,:,0]
+    img_f_imag = img_f[:,:,1]
+    img_f_real_flat = np.reshape(img_f_real, (np.product(img_f_real.shape),))
+    idx = sample(range(np.product(img_f_real.shape)), int(0.3*np.product(img_f_real.shape)))
+    img_f_real_flat[idx] = 0
+    img_f_real_down = np.reshape(img_f_real_flat, img_f_real.shape)
+    img_f_imag_flat = np.reshape(img_f_imag, (np.product(img_f_imag.shape),))
+    img_f_imag_flat[idx] = 0
+    img_f_imag_down = np.reshape(img_f_imag_flat, img_f_imag.shape)
+    img_f_down = np.dstack((img_f_real_down, img_f_imag_down))
+    return img_f_down
 def read_brain_image(path):
     return np.load(path)
 def read_image(path, img_size):
@@ -179,18 +191,18 @@ automap.compile(loss='mean_squared_error', optimizer = optimizer)
 
 automap.summary()
 #%%
-automap.load_weights('automap/saved_model/20190612-131404/automap_epoch_200_weights.hdf5')
+automap.load_weights('automap/saved_model/20190618-143638/automap_undersampled_epoch_200_weights.hdf5')
 #%%
 path = glob('/Volumes/Samsung_T5/automap_datasets/brain/test/*')
 results = []
 inputs = []
-#fft_results = []
+fft_results = []
 for batch_i, (imgs, imgs_f) in enumerate(load_batch(path, batch_size = 1,  num_images = 28)):
-    #img_f_fft= np.reshape(imgs_f, (64*64, 2))
-    #img_f_fft = img_f_fft.view(dtype = np.complex128)
-    #img_fft = abs(np.fft.ifft2(img_f_fft))
-    #img_fft = np.reshape(img_fft,(64,64))
-    #fft_results.append(img_fft)
+    img_f_fft= np.reshape(imgs_f, (64*64, 2))
+    img_f_fft = img_f_fft.view(dtype = np.complex128)
+    img_fft = abs(np.fft.ifft2(img_f_fft))
+    img_fft = np.reshape(img_fft,(64,64))
+    fft_results.append(img_fft)
     result = automap.predict(imgs_f)
     print('loss: ', np.mean(np.square(result - imgs)))
     result = np.array(result)
@@ -206,24 +218,24 @@ results = np.array(results)
 print(results.shape)
 inputs = np.array(inputs)
 print(inputs.shape)
-#fft_results = np.array(fft_results)
-#print(fft_results.shape)
+fft_results = np.array(fft_results)
+print(fft_results.shape)
 #%%
 #plt.imshow(fft_results[0,:,:], cmap = 'gray')
 #%%
-fig, axs = plt.subplots(2,14, figsize=(40,5))
+fig, axs = plt.subplots(3,14, figsize=(40,5))
 print(axs.shape)
-for row in range(2):
+for row in range(3):
     for col in range(14):
         if row == 0:
-            axs[row, col].imshow(inputs[col+14 , :, :], cmap = 'gray')
+            axs[row, col].imshow(inputs[col , :, :], cmap = 'gray')
         if row == 1:
-            axs[row, col].imshow(results[col+14 , :, :], cmap = 'gray')
-        #if row == 2:
-            #axs[row, col].imshow(fft_results[col + 14, :, :], cmap = 'gray')
+            axs[row, col].imshow(results[col , :, :], cmap = 'gray')
+        if row == 2:
+            axs[row, col].imshow(np.rot90(fft_results[col, :, :], k =3), cmap = 'gray')
     
         
-plt.savefig('brain_automap_results.png')
+#plt.savefig('brain_automap_results_undersample2.png')
 
 #%%
 
