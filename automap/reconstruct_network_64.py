@@ -16,19 +16,19 @@ from random import sample
 import nibabel as nib 
 #%%
 print('++++++++++ contructing Neural Netork +++++++++ ')
-n = 256 
+n = 64
 inChannel = 1 
 m1 = 32 
 m2 = 64 
 batch_size = 10 
-epochs = 100
+epochs = 200
 input_img = Input(shape = (n,n,inChannel,))
 conv1 = Conv2D(m1, (3, 3), activation = 'relu', padding = 'same')(input_img)
 conv2 = Conv2D(m2, (3, 3), activation = 'relu', padding = 'same')(conv1)
 deconv = Conv2DTranspose(1, (3,3), padding = 'same')(conv2)
 
 automap = Model(input_img, deconv)
-optimizer = RMSprop(lr = 0.0005) 
+optimizer = RMSprop(lr = 0.00002) 
 automap.compile(loss='mean_squared_error', optimizer = optimizer)
 
 automap.summary()
@@ -42,16 +42,12 @@ def to_freq_space_2d(img):
     """
     
     img_f = np.fft.fft2(img)  # FFT
-    #img_fshift = np.fft.fftshift(img_f)  # FFT shift
-    img_f_flat = np.reshape(img_f, (np.product(img_f.shape),))
-    idx = sample(range(np.product(img_f.shape)), int(0.3 * np.product(img_f.shape)))
-    img_f_flat[idx] = 0
-    img_f= np.reshape(img_f_flat, img_f.shape)
-    #img_real = img_f.real  # Real part: (im_size1, im_size2)
-    #img_imag = img_f.imag  # Imaginary part: (im_size1, im_size2)
-    #img_real_imag = np.dstack((img_real, img_imag))  # (im_size1, im_size2, 2)
+    img_fshift = np.fft.fftshift(img_f)  # FFT shift
+    img_real = img_fshift.real  # Real part: (im_size1, im_size2)
+    img_imag = img_fshift.imag  # Imaginary part: (im_size1, im_size2)
+    img_real_imag = np.dstack((img_real, img_imag))  # (im_size1, im_size2, 2)
 
-    return img_f 
+    return img_real_imag  
 def undersample(img_f):
     img_f_real = img_f[:,:,0]
     img_f_imag = img_f[:,:,1]
@@ -65,12 +61,7 @@ def undersample(img_f):
     img_f_down = np.dstack((img_f_real_down, img_f_imag_down))
     return img_f_down
 def read_image(path):
-    img = nib.load(path)
-    img = img.get_data()
-    _,_,w = img.shape
-    _w = int(w/2)
-    img = img[:,:,_w:]
-    img = np.squeeze(np.array(img))
+    img = np.load(path)
     return img
 def load_batch(path, batch_size):
     random.shuffle(path)
@@ -81,16 +72,16 @@ def load_batch(path, batch_size):
         for f in batch:
             img = read_image(f)
             img = (img - np.min(img))/(np.max(img) - np.min(img))
-            img_f_down = to_freq_space_2d(img)
-            #img_f_down = undersample(img_f)
-            #img_f_down = undersample(img_f)
-            #img_f_down = np.reshape(img_f_down, (img_f.shape[0]*img_f.shape[1], img_f.shape[2]))
-            #img_f_down = img_f_down.view(dtype = np.complex128)
+            img_f = to_freq_space_2d(img)
+            img_f_down = undersample(img_f)
+            img_f_down = undersample(img_f)
+            img_f_down = np.reshape(img_f_down, (img_f.shape[0]*img_f.shape[1], img_f.shape[2]))
+            img_f_down = img_f_down.view(dtype = np.complex128)
             img_down = abs(np.fft.ifft2(img_f_down))
-            #img_down = np.reshape(img_down, (img_f.shape[0], img_f.shape[1]))
-            #img_down = np.rot90(img_down)
-            #img_down = np.rot90(img_down)
-            #img_down = np.rot90(img_down)
+            img_down = np.reshape(img_down, (img_f.shape[0], img_f.shape[1]))
+            img_down = np.rot90(img_down)
+            img_down = np.rot90(img_down)
+            img_down = np.rot90(img_down)
             imgs_down.append(img_down)
             imgs.append(img)
         imgs = np.asarray(imgs, dtype = float)
@@ -109,7 +100,7 @@ def saveModel(model, model_name, epoch, date_time):
 
         model_path_w = 'saved_model/{}/{}_epoch_{}_weights.hdf5'.format(date_time, model_name, epoch)
         model.save_weights(model_path_w)
-path = glob('/data/cephfs/punim0900/p2m/datasets/p2m7/train/*')
+path = glob('/data/cephfs/punim0900/automap/datasets/brain/train/*')
 history_loss = []
 for epoch in range(1, epochs + 1):
     for batch_i, (imgs, imgs_down) in enumerate(load_batch(path, batch_size)):
@@ -159,23 +150,3 @@ np.save('saved_model/{}/loss_history.npy'.format(date_time), numpy_loss_history)
 #%%
 #print(np.max(img))
 #print(np.min(img))
-#%%
-
-# filepath = 'datasets/p2m8/test/3003.nii.gz'
-# img = read_image(filepath)
-# img = (img - np.min(img))/(np.max(img) - np.min(img))
-# img_f_down = to_freq_space_2d(img)
-# #img_f_down = undersample(img_f)
-# #img_f_down = undersample(img_f)
-# #img_f_down = np.reshape(img_f_down, (img_f.shape[0]*img_f.shape[1], img_f.shape[2]))
-# #img_f_down = img_f_down.view(dtype = np.complex128)
-# img_down = abs(np.fft.ifft2(img_f_down))
-# #%%
-# print(img_down.shape)
-# #%%
-# plt.imshow(img, cmap = 'gray')
-
-# #%%
-# plt.imshow(img_down, cmap = 'gray')
-
-# #%%

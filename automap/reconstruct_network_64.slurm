@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes 1
-#SBATCH --time 40:00:00
+#SBATCH --time 20:00:00
 #SBATCH --gres=gpu:p100:1
 #SBATCH --partition gpgpu
 #SBATCH --cpus-per-task=1
@@ -10,4 +10,4 @@ module load Tensorflow/1.4.0-intel-2017.u2-GCC-5.4.0-CUDA8-Python-3.5.2-GPU
 module load Keras/2.1.5-intel-2017.u2-GCC-5.4.0-CUDA8-Python-3.5.2-GPU
 
 
-python reconstruct_network_unet.py
+python reconstruct_network_64.py
